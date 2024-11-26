@@ -4,4 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+ariadne = "0.5"
+chumsky = { version = "1.0.0-alpha.7", features = [ "pratt", "label" ] }
 logos = "0.14"
