@@ -19,7 +19,7 @@ fn main() {
     let source_content = fs::read_to_string(&source_path).unwrap();
 
     match parse(&source_content) {
-        Ok(expr) => println!("result: {expr:?}"),
+        Ok(program) => println!("result: {program:?}"),
         Err(errs) => {
             for err in errs {
                 Report::build(ReportKind::Error, (&source_path, err.span().into_range()))

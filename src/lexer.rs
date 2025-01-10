@@ -5,7 +5,8 @@ use std::{
 
 use logos::{Lexer as LogosLexer, Logos, Skip, SpannedIter};
 
-/// A wrapper around [logos::SpannedIter] that flattens the [Result<Token>] returned by [Iterator::next] into just [Token] by making use of the [Token::Error] variant
+/// A wrapper around [logos::SpannedIter] that flattens the [Result<Token>] returned by
+/// [Iterator::next] into just [Token] by making use of the [Token::Error] variant.
 pub struct Lexer<'source> {
     logos_iter: SpannedIter<'source, Token<'source>>,
 }
@@ -33,7 +34,7 @@ impl<'source> Iterator for Lexer<'source> {
 pub enum Token<'source> {
 	/* KEYWORDS */
 	#[token("program", ignore(case))]   Program,
-	#[token("label", ignore(case))]     Label(&'source str),
+	#[token("label", ignore(case))]     Label,
 	#[token("const", ignore(case))]     Const,
 	#[token("type", ignore(case))]      Type,
 	#[token("procedure", ignore(case))] Procedure,
@@ -95,24 +96,73 @@ pub enum Token<'source> {
 	#[token("..")] Elipsis,
 
 	/* LITERALS */
-	#[token("nil", ignore(case))] Nil,
-	#[token("true", ignore(case))] True,
+	#[token("nil", ignore(case))]   Nil,
+	#[token("true", ignore(case))]  True,
 	#[token("false", ignore(case))] False,
-	#[regex(r"([a-z][a-z0-9]*)")] Ident(&'source str),
-	#[regex(r"(\+|-)?[0-9]+")] IntegerLiteral(&'source str),
-	#[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] RealLiteral(&'source str),
-	#[regex(r"'([^']|'')+'")] StringLiteral(&'source str),
+	#[regex(r"([a-z][a-z0-9]*)")]   Ident(&'source str),
+	#[regex(r"[0-9]+", parse_unsigned_integer)]                        UnsignedIntegerLiteral(u64),
+	#[regex(r"(\+|-)[0-9]+", parse_int)]                               IntegerLiteral(i64),
+	#[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?", parse_real)]
+	#[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+",            parse_real)] RealLiteral(f64),
+	#[regex(r"'([^']|'')+'")]                                          StringLiteral(&'source str),
 
 	#[regex(r"\{|\(\*", comment_lexer)]
     #[regex(r"[\r\n\t\f\v ]+", logos::skip)]
     Error,
 }
 
+fn parse_uint<'source, C: Iterator<Item = u8>>(chars: &mut C) -> u64 {
+    chars
+        .map(|c| c - b'0')
+        .fold(0, |acc, d| acc * 10 + (d as u64))
+}
+
+fn parse_unsigned_integer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> u64 {
+    parse_uint(&mut lex.slice().bytes())
+}
+
+fn parse_int<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> i64 {
+    let mut chars = lex.slice().bytes().peekable();
+    let sign = chars.next_if(|c| [b'+', b'-'].contains(c));
+    let num = parse_uint(&mut chars) as i64;
+    match sign {
+        Some(b'-') => -num,
+        Some(b'+') | None => num,
+        _ => unreachable!(),
+    }
+}
+
+fn parse_real<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> f64 {
+    todo!("Throw together a parser with lexical-core")
+}
+
+fn comment_lexer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> Skip {
+    let rem = lex.remainder();
+    let mut previous = None;
+
+    for (idx, current) in rem.char_indices() {
+        if let Some(previous) = previous {
+            match (previous, current) {
+                ('{', _) | ('(', '*') => (),
+                (_, '}') | ('*', ')') => {
+                    lex.bump(idx + 1);
+                    return Skip;
+                }
+                _ => (),
+            }
+        }
+
+        previous = Some(current);
+    }
+
+    Skip
+}
+
 impl Display for Token<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Token::Program => f.write_str("program"),
-            Token::Label(label) => write!(f, "label '{label}'"),
+            Token::Label => f.write_str("label"),
             Token::Const => f.write_str("const"),
             Token::Type => f.write_str("type"),
             Token::Procedure => f.write_str("procedure"),
@@ -174,32 +224,13 @@ impl Display for Token<'_> {
             Token::True => f.write_str("true"),
             Token::False => f.write_str("false"),
             Token::Ident(ident) => write!(f, "identifier '{ident}'"),
-            Token::IntegerLiteral(intlit) => write!(f, "integer literal '{intlit}'"),
+            Token::UnsignedIntegerLiteral(uintlit) => {
+                write!(f, "unsigned integer literal '{uintlit}'")
+            }
+            Token::IntegerLiteral(intlit) => write!(f, "signed integer literal '{intlit}'"),
             Token::RealLiteral(reallit) => write!(f, "real literal '{reallit}'"),
             Token::StringLiteral(strlit) => write!(f, "string literal {strlit}"),
             Token::Error => f.write_str("invalid token"),
         }
     }
-}
-
-fn comment_lexer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> Skip {
-    let rem = lex.remainder();
-    let mut previous = None;
-
-    for (idx, current) in rem.char_indices() {
-        if let Some(previous) = previous {
-            match (previous, current) {
-                ('{', _) | ('(', '*') => (),
-                (_, '}') | ('*', ')') => {
-                    lex.bump(idx + 1);
-                    return Skip;
-                }
-                _ => (),
-            }
-        }
-
-        previous = Some(current);
-    }
-
-    Skip
 }
