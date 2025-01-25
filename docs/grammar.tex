@@ -1,0 +1,367 @@
+\documentclass{article}
+
+\usepackage{booktabs}
+\usepackage{fontspec}
+\usepackage[a4paper, margin=2.5cm]{geometry}
+\usepackage{plex-serif}
+\usepackage{syntax}
+\usepackage{backnaur}
+
+\setmonofont{Iosevka Term SS07}
+
+\renewcommand{\syntleft}{$\langle$\normalfont}
+\renewcommand{\syntright}{$\rangle$}
+
+\title{Pascal Grammar}
+\author{Jawad Ahmed}
+\date{20th January 2024}
+
+\begin{document}
+\maketitle
+\setcounter{section}{-1}
+
+This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:1990 standard.
+
+\section{Programs}
+
+{
+  \grammarindent1.7in
+  \begin{grammar}
+    <program> ::= <program heading> `;' <block> `.'
+
+    <program heading> ::= `program' <identifier> [ <program param list> ]
+
+    <program param list> ::= `(' <identifier list> `)'
+    
+    <block> ::= [ <label decl part> ]  [ <const def part> ] [ <type def part> ] \\
+    \hphantom{} [ <var decl part> ] <routine part> <stmt part>
+
+    <label decl part> ::= `label' <digit seq> \{ `,' <digit seq> \} `;'
+
+    <const def part> ::= `const' <const def> `;' \{ <const def> `;' \}
+
+    <type def part> ::= `type' <type def> `;' \{ <type def> `;' \}
+
+    <var decl part> ::= `var' <var decl> `;' \{ <var decl> `;' \}
+
+    <routine decl part> ::= \{ ( <proc decl> | <func decl> ) `;' \}
+
+    <stmt part> ::= <compound stmt>
+  \end{grammar}
+}
+
+\section{Declarations}
+
+{
+  \grammarindent1.85in
+  \begin{grammar}
+    <const def> ::= <ident> `=' <const>
+
+    <type def> ::= <ident> `=' <type>
+
+    <var decl> ::= <ident list> `:' <type>
+
+    <proc decl> ::= <proc heading> `;' <block> \alt <proc heading> `;' <directive> \alt <proc identification> `;' <block>
+
+    <func decl> ::= <func heading> `;' <block> \alt <func heading> `;' <directive> \alt <func identification> `;' <block>
+
+    <proc heading> ::= `procedure' <ident> [ <formal param list> ]
+    
+    <proc identification> ::= `procedure' <proc ident>
+
+    <func heading> ::= `function' <ident> [ <formal param list> ]
+    
+    <func identification> ::= `function' <func ident>
+
+    <formal param list> ::= `(' <formal param section>
+    \{ `;' <formal param section> \} `)'
+
+    <formal param section> ::= <value param spec> \alt <var param spec> \alt <proc param spec> \alt <func param spec>
+  \end{grammar}
+}
+
+\section{Parameters}
+
+{
+  \grammarindent2.8in
+  \begin{grammar}
+    <value param spec> ::= <ident list> `;' \\
+    ( <type ident> | <conformant array schema> )
+
+    <var param spec> ::= `var' <ident list> `:' \\
+    ( <type ident> | <conformant array schema> )
+
+    <proc param spec> ::= <proc heading>
+
+    <func param spec> ::= <func heading>
+
+    <conformant array schema> ::= <packed conformant array schema> \alt <unpacked conformant array schema>
+
+    <packed conformant array schema> ::= `packed' `array' `[' <index type spec> `]' `of' <type ident>
+
+    <unpacked conformant array schema> ::= `array' `[' <index type spec> \{ `;' <index type spec> \} `]' `of' ( <type ident> | <conformant array schema> )
+
+    <index type spec> ::= <ident> `..' <ident> `:' <ordinal type ident>
+  \end{grammar}
+}
+
+\section{Statements}
+
+{
+  \grammarindent1.5in
+  \begin{grammar}
+    <compound stmt> ::= `begin' <stmt seq> `end'
+
+    <stmt seq> ::= <stmt> \{ `;' <stmt> \}
+
+    <stmt> ::= [ <label> `:' ] ( <simple stmt> | <structured stmt> )
+
+    <simple stmt> ::= <empty stmt> \alt <assign stmt> \alt <proc stmt> \alt <goto stmt>
+
+    <structured stmt> ::= <compound stmt> \alt <conditional stmt> \alt <repetitive stmt> \alt <with stmt>
+
+    <conditional stmt> ::= <if stmt> \alt <case stmt>
+
+    <repetitive stmt> ::= <while stmt> \alt <repeat stmt> \alt <for stmt>
+
+    <empty stmt> ::= \hphantom{}
+
+    <assignment stmt> ::= ( <var> | <func ident> ) `:=' <expr>
+
+    <procedure stmt> ::= <proc ident> [ <actual param list> | <write param list> ]
+
+    <goto stmt> ::= `goto' <label>
+
+    <if stmt> ::= `if' <bool expr> `then' <stmt> [ `else' <stmt> ]
+
+    <case stmt> ::= `case' <case index> `of' <case> \{ `;' <case> \} [ `;' ] `end'
+
+    <repeat stmt> ::= `repeat' <stmt seq> `until' <bool expr>
+
+    <while stmt> ::= `while' <bool expr> `do' <stmt>
+
+    <for stmt> ::= `for' <control var> `:=' <ordinal expr> ( `to' | `downto' ) \\
+    <ordinal expr> `do' <stmt>
+
+    <with stmt> ::= `with' <record var list> `do' <stmt>
+
+    <record var list> ::= <record var> \{ `,' <record var> \}
+
+    <case index> ::= <ordinal expr>
+
+    <case> ::= <const> \{ `,' <const> \} `;' <stmt>
+
+    <control var> ::= <variable ident>
+  \end{grammar}
+}
+
+\section{Types}
+
+{
+  \grammarindent2in
+  \begin{grammar}
+    <type> ::= <simple type> \alt <structured type> \alt <pointer type>
+
+    <simple type> ::= <ordinal type> \alt <real type ident>
+
+    <structured type> ::= [ `packed' ] <unpacked structured type> \alt <structured type ident>
+
+    <pointer type> ::= ( `^' | `↑' ) <domain type> \alt <pointer type ident>
+
+    <ordinal type> ::= <enumerated type> \alt <subrange type> \alt <ordinal type ident>
+
+    <unpacked structured type> ::= <array type> \alt <record type> \alt <set type> \alt <file type>
+
+    <domain type> ::= <type ident>
+
+    <enumerated type> ::= `(' <ident list> `)'
+
+    <subrange type> ::= <const> `..' <const>
+
+    <array type> ::= `array' `[' <index type> \{ `,' <index type> \} `]' `of' <component type>
+
+    <record type> ::= `record' <field list> `end'
+
+    <set type> ::= `set' `of' <base type>
+
+    <file type> ::= `file' `of' <component type>
+
+    <index type> ::= <ordinal type>
+
+    <component type> ::= <type>
+
+    <base type> ::= <ordinal type>
+
+    <result type> ::= <ordinal type ident> \alt <real type ident> \alt <pointer type ident>
+
+    <field list> ::= [ ( <fixed part> [ `;' <variant part> ] | <variant part> ) [ `;' ] ]
+
+    <fixed part> ::= <record section> \{ `;' <record section> \}
+
+    <variant part> ::= `case' <variant selector> `of' <variant> \{ `;' <variant> \}
+
+    <record section> ::= <ident list> `;' <type>
+
+    <variant selector> ::= [ <tag field> `:' ] <tag type>
+
+    <variant> ::= <const> \{ `,' <const> \} `:' `(' <field list> `)'
+
+    <tag type> ::= <ordinal type ident>
+
+    <tag field> ::= <ident>
+
+    <const> ::= [ <sign> ] ( <unsigned number> | <const ident> )
+  \end{grammar}
+}
+
+\section{Expressions}
+
+{
+  \grammarindent1.7in
+  \begin{grammar}
+    <expr> ::= <simple expr> [ <relational op> <simple expression> ]
+
+    <simple expr> ::= [ <sign> ] <term> \{ <adding op> <term> \}
+
+    <term> ::= <factor> \{ <multiplying op> <factor> \}
+
+    <factor> ::= <unsigned const> \alt <bound ident> \alt <variable> \alt <set constructor> \alt <function designator> \alt `not' <factor> \alt `(' <expr> `)'
+
+    <relational op> ::= `=' | `<>' | `<' | `>' | `<=' | `>=' | `in'
+
+    <adding op> ::= `+' | `-' | `or'
+
+    <multiplying op> ::= `*' | `/' | `div' | `mod' | `and'
+
+    <unsigned const> ::= <unsigned number> \alt <char string> \alt <const ident> \alt `nil'
+
+    <function designator> ::= <function ident> [ <actual param list> ]
+
+    <var> ::= <entire var> \alt <component var> \alt <identified var> \alt <buffer var>
+
+    <entire var> ::= <var ident>
+
+    <component var> ::= <indexed var> \alt <field designator>
+
+    <identified var> ::= <pointer var> ( `^' | `↑' )
+
+    <buffer var> ::= <file var> ( `^' | `↑' )
+
+    <indexed var> ::= <array var> `[' <index> \{ `,' <index> \} `]'
+
+    <field designator> ::= [ <record var> `.' ] <field ident>
+
+    <set constructor> ::= `[' [ <element description> \{ `,' <element description> \} ] `]'
+
+    <element description> ::= <ordinal expr> [ `..' <ordinal expr> ]
+
+    <actual param list> ::= `(' <actual param> \{ `,' <actual param> \} `)'
+
+    <actual param> ::= <expr> \alt <var> \alt <proc ident> \alt <func ident>
+
+    <write param list> ::= `(' ( <file var> | <write param> ) `,' \{  `,' <write param> \} `)'
+
+    <write param> ::= <expr> [ `:' <integer expr> [ `:' <integer expr> ] ]
+  \end{grammar}
+}
+
+\section{Tokens}
+
+{
+  \grammarindent1.8in
+  \begin{grammar}
+    <array var> ::= <var>
+    
+    <record var> ::= <var>
+    
+    <file var> ::= <var>
+    
+    <pointer var> ::= <var>
+
+    <integer expr> ::= <ordinal expr>
+
+    <bool expr> ::= <ordinal expr>
+
+    <index> ::= <ordinal expr>
+
+    <ordinal expr> ::= <expr>
+
+    <pointer type ident> ::= <type ident>
+    
+    <structured type ident> ::= <type ident>
+    
+    <ordinal type ident> ::= <type ident>
+    
+    <real type ident> ::= <type ident>
+
+    <const ident> ::= <ident>
+    
+    <type ident> ::= <ident>
+    
+    <var ident> ::= <ident>
+    
+    <field ident> ::= <ident>
+    
+    <proc ident> ::= <ident>
+    
+    <func ident> ::= <ident>
+    
+    <bound ident> ::= <ident>
+
+    <unsigned number> ::= <unsigned integer> \alt <unsigned real>
+
+    <ident list> ::= <ident> \{ `,' <ident> \}
+
+    <ident> ::= <letter> \{ <letter> | <digit> \}
+    
+    <directive> ::= <letter> \{ <letter> | <digit> \}
+
+    <label> ::= <digit seq>
+
+    <unsigned integer> ::= <digit seq>
+
+    <unsigned real> ::= <digit seq> `.' <digit seq> [ `e' <scale factor> ] \alt <digit seq> `e' <scale factor>
+
+    <scale factor> ::= [ <sign> ] <digit seq>
+
+    <sign> ::= `+' | `-'
+
+    <char string> ::= `\'' <string element> \{ <string element> \} `\''
+
+    <digit seq> ::= <digit> \{ <digit> \}
+
+    <letter> ::= `a' | `b' | `c' | `d' | `e' | `f' | `g' | `h' | `i' | `j' | `k' | `l' | `m' | `n' | `o' | `p' | `q' | `r' | `s' | `t' | `u' | `v' | `w' | `x' | `y' | `z'
+
+    <digit> ::= `0' | `1' | `2' | `3' | `4' | `5' | `6' | `7' | `8' | `9'
+
+    <string element> ::= `\'\'' | <any char except `\tt\'\normalfont'>
+  \end{grammar}
+}
+
+\section{Key}
+
+\begin{center}
+  \begin{tabular}{l l}
+    Abbreviation & Expansion \\
+    \midrule
+    decl & declaration \\
+    def & definition \\
+    const & constant \\
+    var & variable \\
+    routine & procedure and function \\
+    stmt & statement \\
+    seq & sequence \\
+    ident & identifier \\
+    proc & procedure \\
+    func & function \\
+    param & parameter \\
+    spec & specification \\
+    assign & assignment \\
+    bool & Boolean \\
+    op & operator \\
+    char & character
+  \end{tabular}
+\end{center}
+
+\end{document}
+
