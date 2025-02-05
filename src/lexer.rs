@@ -1,8 +1,10 @@
 use std::{
     fmt::{self, Display, Write},
+    num::NonZero,
     ops::Range,
 };
 
+use lexical_core::{parse_with_options, NumberFormatBuilder, ParseFloatOptions};
 use logos::{Lexer as LogosLexer, Logos, Skip, SpannedIter};
 
 /// A wrapper around [logos::SpannedIter] that flattens the [Result<Token>] returned by
@@ -73,38 +75,38 @@ pub enum Token<'source> {
 	#[token("-")]  Minus,
 	#[token("*")]  Asterisk,
 	#[token("/")]  Slash,
-	#[token("=")]  Equals,
-	#[token("<")]  LessThan,
-	#[token(">")]  GreaterThan,
-	#[token("[")]  LeftSquare,
-	#[token("(.")] LeftSquareAlt,
-	#[token("]")]  RightSquare,
-	#[token(".)")] RightSquareAlt,
-	#[token(".")]  Period,
+	#[token("=")]  Eq,
+	#[token("<")]  LT,
+	#[token(">")]  GT,
+	#[token("[")]  LSquare,
+	#[token("(.")] LSquareAlt,
+	#[token("]")]  RSquare,
+	#[token(".)")] RSquareAlt,
+	#[token(".")]  Dot,
 	#[token(",")]  Comma,
 	#[token(":")]  Colon,
 	#[token(";")]  Semicolon,
 	#[token("↑")]  UpArrow,
 	#[token("^")]  Caret,
 	#[token("@")]  At,
-	#[token("(")]  LeftParen,
-	#[token(")")]  RightParen,
-	#[token("<>")] NotEqual,
-	#[token("<=")] LessOrEqual,
-    #[token(">=")] GreaterOrEqual,
-	#[token(":=")] Becomes,
-	#[token("..")] Elipsis,
+	#[token("(")]  LParen,
+	#[token(")")]  RParen,
+	#[token("<>")] NEq,
+	#[token("<=")] LEq,
+        #[token(">=")] GEq,
+	#[token(":=")] Assign,
+	#[token("..")] Ellipsis,
 
 	/* LITERALS */
 	#[token("nil", ignore(case))]   Nil,
 	#[token("true", ignore(case))]  True,
 	#[token("false", ignore(case))] False,
 	#[regex(r"([a-z][a-z0-9]*)")]   Ident(&'source str),
-	#[regex(r"[0-9]+", parse_unsigned_integer)]                        UnsignedIntegerLiteral(u64),
-	#[regex(r"(\+|-)[0-9]+", parse_int)]                               IntegerLiteral(i64),
-	#[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?", parse_real)]
-	#[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+",            parse_real)] RealLiteral(f64),
-	#[regex(r"'([^']|'')+'")]                                          StringLiteral(&'source str),
+	#[regex(r"[0-9]+", parse_unsigned_integer)]                        UIntLit(u64),
+	#[regex(r"(\+|-)[0-9]+", parse_int)]                               IntLit(i64),
+        #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+",            parse_real)]
+        #[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?", parse_real)] RealLit(f64),
+	#[regex(r"'([^']|'')+'")]                                          StrLit(&'source str),
 
 	#[regex(r"\{|\(\*", comment_lexer)]
     #[regex(r"[\r\n\t\f\v ]+", logos::skip)]
@@ -132,8 +134,18 @@ fn parse_int<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> i64 {
     }
 }
 
+const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
+    .digit_separator(NonZero::new(b'.'))
+    .required_integer_digits(true)
+    .required_fraction_digits(true)
+    .required_mantissa_digits(true)
+    .required_mantissa_sign(true)
+    .build();
+
 fn parse_real<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> f64 {
-    todo!("Throw together a parser with lexical-core")
+    let tok = lex.slice();
+    parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
+        .unwrap()
 }
 
 fn comment_lexer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> Skip {
@@ -199,37 +211,37 @@ impl Display for Token<'_> {
             Token::Minus => f.write_char('-'),
             Token::Asterisk => f.write_char('*'),
             Token::Slash => f.write_char('/'),
-            Token::Equals => f.write_char('='),
-            Token::LessThan => f.write_char('<'),
-            Token::GreaterThan => f.write_char('>'),
-            Token::LeftSquare => f.write_char('['),
-            Token::LeftSquareAlt => f.write_str("(."),
-            Token::RightSquare => f.write_char(']'),
-            Token::RightSquareAlt => f.write_str(".)"),
-            Token::Period => f.write_char('.'),
+            Token::Eq => f.write_char('='),
+            Token::LT => f.write_char('<'),
+            Token::GT => f.write_char('>'),
+            Token::LSquare => f.write_char('['),
+            Token::LSquareAlt => f.write_str("(."),
+            Token::RSquare => f.write_char(']'),
+            Token::RSquareAlt => f.write_str(".)"),
+            Token::Dot => f.write_char('.'),
             Token::Comma => f.write_char(','),
             Token::Colon => f.write_char(':'),
             Token::Semicolon => f.write_char(';'),
             Token::UpArrow => f.write_char('↑'),
             Token::Caret => f.write_char('^'),
             Token::At => f.write_char('@'),
-            Token::LeftParen => f.write_char('('),
-            Token::RightParen => f.write_char(')'),
-            Token::NotEqual => f.write_str("<>"),
-            Token::LessOrEqual => f.write_str("<="),
-            Token::GreaterOrEqual => f.write_str(">="),
-            Token::Becomes => f.write_str(":="),
-            Token::Elipsis => f.write_str(".."),
+            Token::LParen => f.write_char('('),
+            Token::RParen => f.write_char(')'),
+            Token::NEq => f.write_str("<>"),
+            Token::LEq => f.write_str("<="),
+            Token::GEq => f.write_str(">="),
+            Token::Assign => f.write_str(":="),
+            Token::Ellipsis => f.write_str(".."),
             Token::Nil => f.write_str("nil"),
             Token::True => f.write_str("true"),
             Token::False => f.write_str("false"),
             Token::Ident(ident) => write!(f, "identifier '{ident}'"),
-            Token::UnsignedIntegerLiteral(uintlit) => {
+            Token::UIntLit(uintlit) => {
                 write!(f, "unsigned integer literal '{uintlit}'")
             }
-            Token::IntegerLiteral(intlit) => write!(f, "signed integer literal '{intlit}'"),
-            Token::RealLiteral(reallit) => write!(f, "real literal '{reallit}'"),
-            Token::StringLiteral(strlit) => write!(f, "string literal {strlit}"),
+            Token::IntLit(intlit) => write!(f, "signed integer literal '{intlit}'"),
+            Token::RealLit(reallit) => write!(f, "real literal '{reallit}'"),
+            Token::StrLit(strlit) => write!(f, "string literal {strlit}"),
             Token::Error => f.write_str("invalid token"),
         }
     }

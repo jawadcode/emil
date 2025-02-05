@@ -1,18 +1,17 @@
-This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024/nixos.org) (preloaded format=xelatex 1980.1.1)  25 JAN 2025 03:14
+This is XeTeX, Version 3.141592653-2.6-0.999996 (TeX Live 2024/nixos.org) (preloaded format=xelatex 1980.1.1)  1 FEB 2025 01:13
 entering extended mode
  restricted \write18 enabled.
- file:line:error style messages enabled.
  %&-line parsing enabled.
 **grammar.tex
 (./grammar.tex
 LaTeX2e <2024-06-01> patch level 2
 L3 programming layer <2024-10-09>
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/base/article.cls
 Document Class: article 2024/02/08 v1.4n Standard LaTeX document class
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/base/size10.clo
 File: size10.clo 2024/02/08 v1.4n Standard LaTeX file (size option)
 )
@@ -28,7 +27,7 @@ File: size10.clo 2024/02/08 v1.4n Standard LaTeX file (size option)
 \belowcaptionskip=\skip50
 \bibindent=\dimen141
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/booktabs/booktabs.sty
 Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
 \heavyrulewidth=\dimen142
@@ -49,15 +48,15 @@ Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
 \@lastruleclass=\count267
 \@thisrulewidth=\dimen154
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/fontspec/fontspec.sty
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/l3packages/xparse/xparse.sty
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/l3kernel/expl3.sty
 Package: expl3 2024-10-09 L3 programming layer (loader) 
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/l3backend/l3backend-xetex.def
 File: l3backend-xetex.def 2024-05-08 L3 backend support: XeTeX
 \g__graphics_track_int=\count268
@@ -69,7 +68,7 @@ Package: xparse 2024-08-16 L3 Experimental document command parser
 )
 Package: fontspec 2024/05/11 v2.9e Font selection for XeLaTeX and LuaLaTeX
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/fontspec/fontspec-xetex.sty
 Package: fontspec-xetex 2024/05/11 v2.9e Font selection for XeLaTeX and LuaLaTe
 X
@@ -88,26 +87,26 @@ X
 \l__fontspec_tmpb_dim=\dimen156
 \l__fontspec_tmpc_dim=\dimen157
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/base/fontenc.sty
 Package: fontenc 2021/04/29 v2.0v Standard LaTeX package
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/fontspec/fontspec.cfg)))
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/geometry/geometry.sty
 Package: geometry 2020/01/02 v5.9 Page Geometry
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/graphics/keyval.sty
 Package: keyval 2022/05/29 v1.15 key=value parser (DPC)
 \KV@toks@=\toks17
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/gen
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/gen
 eric/iftex/ifvtex.sty
 Package: ifvtex 2019/10/25 v1.7 ifvtex legacy package. Use iftex instead.
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/gen
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/gen
 eric/iftex/iftex.sty
 Package: iftex 2022/02/03 v1.0f TeX engine tests
 ))
@@ -124,25 +123,25 @@ Package: iftex 2022/02/03 v1.0f TeX engine tests
 \Gm@layoutvoffset=\dimen165
 \Gm@dimlist=\toks18
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/plex/plex-serif.sty
 Package: plex-serif 2023/09/30 (Bob Tennent) Style file for IBMPlexSerif fonts
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/gen
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/gen
 eric/iftex/ifxetex.sty
 Package: ifxetex 2019/10/25 v0.7 ifxetex legacy package. Use iftex instead.
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/gen
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/gen
 eric/iftex/ifluatex.sty
 Package: ifluatex 2019/10/25 v1.5 ifluatex legacy package. Use iftex instead.
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/xkeyval/xkeyval.sty
 Package: xkeyval 2022/06/16 v2.9 package option processing (HA)
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/gen
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/gen
 eric/xkeyval/xkeyval.tex
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/gen
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/gen
 eric/xkeyval/xkvutils.tex
 \XKV@toks=\toks19
 \XKV@tempa@toks=\toks20
@@ -150,7 +149,7 @@ eric/xkeyval/xkvutils.tex
 \XKV@depth=\count285
 File: xkeyval.tex 2014/12/03 v2.7a key=value parser (HA)
 ))
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/base/textcomp.sty
 Package: textcomp 2024/04/24 v2.1b Standard LaTeX package
 )
@@ -245,7 +244,7 @@ ge=dflt;mapping=tex-text;"
 nguage=dflt;mapping=tex-text;"
 
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/mdwtools/syntax.sty
 Package: syntax 1996/05/17 1.07 Syntax typesetting (MDW)
 \grammarparsep=\skip51
@@ -259,7 +258,7 @@ Package: syntax 1996/05/17 1.07 Syntax typesetting (MDW)
 \sdcirclediam=\dimen168
 \sdindent=\dimen169
 )
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/backnaur/backnaur.sty
 Package: backnaur 2019/06/18 3.1 Typesetting for Backus-Naur Form (BNF) definit
 ions
@@ -298,7 +297,7 @@ LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 19.
 LaTeX Font Info:    Trying to load font information for TS1+cmr on input line 1
 9.
 
-(/nix/store/v6nzdg6cwz8wmj4klkx6wjnkwg07hbmb-texlive-2024-env-texmfdist/tex/lat
+(/nix/store/vjhg4mw1iy6ddykidvg77rw91ynx7ax1-texlive-2024-env-texmfdist/tex/lat
 ex/base/ts1cmr.fd
 File: ts1cmr.fd 2023/04/13 v2.5m Standard LaTeX font definitions
 )
@@ -468,4 +467,4 @@ Here is how much of TeX's memory you used:
  1348 hyphenation exceptions out of 8191
  79i,6n,119p,273b,276s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on grammar.pdf (7 pages).
+Output written on grammar.xdv (7 pages, 83832 bytes).

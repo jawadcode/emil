@@ -1,0 +1,7 @@
+.direnv
+.auctex-auto
+grammar.aux
+grammar.fdb_latexmk
+grammar.fls
+grammar.log
+grammar.xdv

@@ -47,9 +47,22 @@
       checks = {emil-crate = emil-crate;};
       packages.default = emil-crate;
       apps.default = flake-utils.lib.mkApp {drv = emil-crate;};
-      devShells.default = craneLib.devShell {
-        checks = self.checks.${system};
-        packages = [pkgs.taplo];
+      devShells = let
+        emilDevShell = craneLib.devShell {
+          checks = self.checks.${system};
+          packages = [pkgs.taplo];
+        };
+      in {
+        emil = emilDevShell;
+        latex = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            (iosevka-bin.override {variant = "SS07";})
+            (texliveFull.withPackages (ps: [ps.plex ps.naive-ebnf]))
+            texlab
+          ];
+        };
+
+        default = emilDevShell;
       };
     });
 }

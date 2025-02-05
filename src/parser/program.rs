@@ -3,9 +3,9 @@ use chumsky::{error::Rich, extra, input::ValueInput, prelude::*, span::SimpleSpa
 use crate::lexer::Token;
 
 use super::{
-    expr::{Expr, Variable},
+    expr::{Expr, Var},
     ident,
-    stmt::{stmt, Stmt},
+    stmt::{compound_stmt, CompoundStmt},
     tokes,
 };
 
@@ -18,59 +18,46 @@ pub struct Program<'source> {
 
 #[derive(Debug, Clone)]
 pub struct Block<'source> {
-    pub decls: Decls<'source>,
-    pub stmts: Vec<Stmt<'source>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Decls<'source> {
-    labels: Vec<u64>,
+    label_decls: Vec<u64>,
     const_defs: Vec<(&'source str, Expr<'source>)>,
     type_defs: Vec<(&'source str, Type<'source>)>,
+    var_decls: Vec<(Vec<&'source str>, Type<'source>)>,
+    routine_decls: Vec<RoutineDecl<'source>>,
+    stmts: CompoundStmt<'source>,
 }
 
 #[derive(Debug, Clone)]
 pub enum Type<'source> {
-    Subrange {
-        lower: Expr<'source>,
-        upper: Expr<'source>,
-    },
-    Scalar(Vec<&'source str>),
+    Ordinal(OrdinalType<'source>),
     Structured {
         packed: bool,
         r#type: Box<UnpackedStructuredType<'source>>,
     },
     Pointer(&'source str),
-    Identifier(&'source str),
 }
 
-#[derive(Clone, Debug)]
-pub struct SubrangeType<'source> {
-    lower: Expr<'source>,
-    upper: Expr<'source>,
+#[derive(Debug, Clone)]
+pub enum OrdinalType<'source> {
+    Enumerated(Vec<&'source str>),
+    Subrange(Expr<'source>, Expr<'source>),
+    Identifier(&'source str),
 }
 
 #[derive(Clone, Debug)]
 pub enum UnpackedStructuredType<'source> {
     Array {
-        indices: Vec<Type<'source>>,
+        indices: Vec<OrdinalType<'source>>,
         elem: Type<'source>,
     },
     Record(FieldList<'source>),
-    Set(Type<'source>),
+    Set(OrdinalType<'source>),
     File(Type<'source>),
 }
 
 #[derive(Clone, Debug)]
 pub struct FieldList<'source> {
-    fixed: Vec<Field<'source>>,
+    fixed: Vec<(Vec<&'source str>, Type<'source>)>,
     variant: Option<VariantType<'source>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Field<'source> {
-    fields: Vec<&'source str>,
-    r#type: Type<'source>,
 }
 
 #[derive(Clone, Debug)]
@@ -86,8 +73,85 @@ pub struct Variant<'source> {
     fields: FieldList<'source>,
 }
 
+#[derive(Clone, Debug)]
+pub enum RoutineDecl<'source> {
+    Proc(ProcDecl<'source>),
+    Func(FuncDecl<'source>),
+}
+
+#[derive(Clone, Debug)]
+pub enum ProcDecl<'source> {
+    Heading(ProcHeading<'source>, PostHeading<'source>),
+    Id(&'source str, Block<'source>),
+}
+
+#[derive(Clone, Debug)]
+pub struct ProcHeading<'source> {
+    name: &'source str,
+    params: Vec<Param<'source>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum FuncDecl<'source> {
+    Heading(FuncHeading<'source>, PostHeading<'source>),
+    Id(&'source str, Block<'source>),
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncHeading<'source> {
+    name: &'source str,
+    params: Vec<Param<'source>>,
+    result_type: &'source str,
+}
+
+#[derive(Debug, Clone)]
+pub enum PostHeading<'source> {
+    Block(Block<'source>),
+    Directive(Directive<'source>),
+}
+
+#[derive(Debug, Clone)]
+pub enum Directive<'source> {
+    Forward,
+    Extern,
+    Unknown(&'source str),
+}
+
+#[derive(Clone, Debug)]
+pub enum Param<'source> {
+    Value(Vec<&'source str>, ParamType<'source>),
+    Var(Vec<&'source str>, ParamType<'source>),
+    Proc(ProcHeading<'source>),
+    Func(FuncHeading<'source>),
+}
+
+#[derive(Clone, Debug)]
+pub enum ParamType<'source> {
+    TypeIdent(&'source str),
+    ArraySchema(Box<ArraySchema<'source>>),
+}
+
+#[derive(Clone, Debug)]
+pub enum ArraySchema<'source> {
+    Packed {
+        index: IndexTypeSpec<'source>,
+        element: &'source str,
+    },
+    Unpacked {
+        indices: Vec<IndexTypeSpec<'source>>,
+        element: ParamType<'source>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct IndexTypeSpec<'source> {
+    start: &'source str,
+    end: &'source str,
+    r#type: &'source str,
+}
+
 pub(super) fn program<'source, I>(
-) -> impl Parser<'source, I, Program<'source>, extra::Err<Rich<'source, Token<'source>>>>
+) -> impl Parser<'source, I, Program<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
 where
     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
 {
@@ -97,12 +161,12 @@ where
             ident()
                 .separated_by(just(Token::Comma))
                 .collect::<Vec<_>>()
-                .delimited_by(just(Token::LeftParen), just(Token::RightParen))
+                .delimited_by(just(Token::LParen), just(Token::RParen))
                 .or_not(),
         )
         .then_ignore(just(Token::Semicolon))
         .then(block())
-        .then_ignore(just(Token::Period))
+        .then_ignore(just(Token::Dot))
         .map(|((name, params), block)| Program {
             name,
             params: params.unwrap_or_default(),
@@ -111,119 +175,240 @@ where
 }
 
 fn block<'source, I>(
-) -> impl Parser<'source, I, Block<'source>, extra::Err<Rich<'source, Token<'source>>>>
+) -> impl Parser<'source, I, Block<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
 where
     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
 {
-    decl()
-        .then(stmt().repeated().collect::<Vec<_>>())
-        .map(|(decls, stmts)| Block { decls, stmts })
-}
+    recursive(|block| {
+        let label_decls = just(Token::Label)
+            .ignore_then(
+                select! {Token::UIntLit(num) => num}
+                    .separated_by(just(Token::Comma))
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .then_ignore(just(Token::Semicolon))
+            .or_not()
+            .map(Option::unwrap_or_default);
 
-fn decl<'source, I>(
-) -> impl Parser<'source, I, Decls<'source>, extra::Err<Rich<'source, Token<'source>>>>
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
-    let label_decls = just(Token::Label)
-        .ignore_then(
-            select! {Token::UnsignedIntegerLiteral(num) => num}
-                .separated_by(just(Token::Comma))
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .then_ignore(just(Token::Semicolon))
-        .or_not()
-        .map(Option::unwrap_or_default);
+        let const_defs = just(Token::Const)
+            .ignore_then(
+                ident()
+                    .then_ignore(just(Token::Eq))
+                    .then(constexpr())
+                    .then_ignore(just(Token::Semicolon))
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .or_not()
+            .map(Option::unwrap_or_default);
 
-    let const_defs = just(Token::Const)
-        .ignore_then(
-            ident()
-                .then_ignore(just(Token::Equals))
-                .then(constexpr())
+        let var_decls = just(Token::Var)
+            .ignore_then(
+                ident()
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>()
+                    .then(r#type())
+                    .then_ignore(just(Token::Semicolon))
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .or_not()
+            .map(Option::unwrap_or_default);
+
+        let type_defs = just(Token::Type)
+            .ignore_then(
+                ident()
+                    .then_ignore(just(Token::Eq))
+                    .then(r#type())
+                    .then_ignore(just(Token::Semicolon))
+                    .repeated()
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .or_not()
+            .map(Option::unwrap_or_default);
+
+        let index_type = ident()
+            .then_ignore(just(Token::Ellipsis))
+            .then(ident())
+            .then_ignore(just(Token::Colon))
+            .then(ident(/* Ordinal type identifier */))
+            .map(
+                |((start, end), r#type): ((&'source str, _), _)| IndexTypeSpec {
+                    start,
+                    end,
+                    r#type,
+                },
+            );
+        let packed_array_schema = just(Token::Packed)
+            .ignore_then(just(Token::Array))
+            .ignore_then(
+                index_type
+                    .clone()
+                    .delimited_by(just(Token::LParen), just(Token::RParen)),
+            )
+            .then_ignore(just(Token::Of))
+            .then(ident(/* Type identifier */))
+            .map(|(index, element)| ArraySchema::Packed { index, element });
+        let param_type = recursive(|param_type| {
+            let unpacked_array_schema = just(Token::Array)
+                .ignore_then(
+                    index_type
+                        .separated_by(just(Token::Semicolon))
+                        .at_least(1)
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(Token::LSquare), just(Token::RSquare)),
+                )
+                .then_ignore(just(Token::Of))
+                .then(param_type)
+                .map(|(indices, element)| ArraySchema::Unpacked { indices, element });
+            choice((
+                ident().map(ParamType::TypeIdent),
+                packed_array_schema
+                    .map(Box::new)
+                    .map(ParamType::ArraySchema),
+                unpacked_array_schema
+                    .map(Box::new)
+                    .map(ParamType::ArraySchema),
+            ))
+        });
+
+        let idents = ident().repeated().at_least(1).collect::<Vec<_>>();
+        let value_param = idents
+            .clone()
+            .then_ignore(just(Token::Colon))
+            .then(param_type.clone())
+            .map(|(names, r#type)| Param::Value(names, r#type));
+        let var_param = just(Token::Var)
+            .ignore_then(idents)
+            .then_ignore(just(Token::Colon))
+            .then(param_type)
+            .map(|(names, r#type)| Param::Var(names, r#type));
+
+        let mut formal_param_list = Recursive::declare();
+
+        let proc_heading = just(Token::Procedure)
+            .ignore_then(ident())
+            .then(formal_param_list.clone())
+            .map(|(name, params)| ProcHeading { name, params });
+        let func_heading = just(Token::Function)
+            .ignore_then(ident())
+            .then(formal_param_list.clone())
+            .then(ident(/* result type */))
+            .map(|((name, params), result_type)| FuncHeading {
+                name,
+                params,
+                result_type,
+            });
+
+        formal_param_list.define(
+            choice((
+                value_param,
+                var_param,
+                proc_heading.clone().map(Param::Proc),
+                func_heading.clone().map(Param::Func),
+            ))
+            .separated_by(just(Token::Semicolon))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LParen), just(Token::RParen)),
+        );
+
+        let proc_identification =
+            just(Token::Procedure).ignore_then(ident(/* procedure identifier */));
+        let func_identification =
+            just(Token::Function).ignore_then(ident(/* function identifier */));
+
+        let post_heading = ident()
+            .map(|s| match s {
+                "forward" => Directive::Forward,
+                "extern" => Directive::Extern,
+                s => Directive::Unknown(s),
+            })
+            .map(PostHeading::Directive)
+            .or(block.clone().map(PostHeading::Block));
+
+        let proc_decl = proc_heading
+            .clone()
+            .then_ignore(just(Token::Semicolon))
+            .then(post_heading.clone())
+            .map(|(heading, post)| ProcDecl::Heading(heading, post))
+            .or(proc_identification
                 .then_ignore(just(Token::Semicolon))
-                .repeated()
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .or_not()
-        .map(Option::unwrap_or_default);
-
-    let type_defs = just(Token::Type)
-        .ignore_then(
-            ident()
-                .then_ignore(just(Token::Equals))
-                .then(r#type())
+                .then(block.clone())
+                .map(|(name, block)| ProcDecl::Id(name, block)));
+        let func_decl = func_heading
+            .then_ignore(just(Token::Semicolon))
+            .then(post_heading)
+            .map(|(heading, post)| FuncDecl::Heading(heading, post))
+            .or(func_identification
                 .then_ignore(just(Token::Semicolon))
-                .repeated()
-                .at_least(1)
-                .collect::<Vec<_>>(),
-        )
-        .or_not()
-        .map(Option::unwrap_or_default);
+                .then(block)
+                .map(|(name, block)| FuncDecl::Id(name, block)));
 
-    label_decls
-        .then(const_defs)
-        .then(type_defs)
-        .map(|((labels, const_defs), type_defs)| Decls {
-            labels,
-            const_defs,
-            type_defs,
-        })
+        let routine_decl = proc_decl
+            .map(RoutineDecl::Proc)
+            .or(func_decl.map(RoutineDecl::Func));
+
+        let routine_decls = routine_decl
+            .then_ignore(just(Token::Semicolon))
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<RoutineDecl>>();
+
+        label_decls
+            .then(const_defs)
+            .then(var_decls)
+            .then(type_defs)
+            .then(routine_decls)
+            .then(compound_stmt())
+            .map(
+                |(((((labels, const_defs), var_decls), type_defs), routine_decls), stmts)| Block {
+                    label_decls: labels,
+                    const_defs,
+                    type_defs,
+                    var_decls,
+                    routine_decls,
+                    stmts,
+                },
+            )
+    })
 }
 
-fn constexpr<'source, I>(
-) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
-    select! {
-        Token::IntegerLiteral(num) => Expr::IntLit(num),
-        Token::RealLiteral(num) => Expr::RealLit(num),
-        Token::StringLiteral(s) => Expr::StrLit(s),
-        Token::Ident(name) => Expr::Variable(Variable::Plain(name)),
-    }
-    .or(tokes([Token::Plus, Token::Minus])
-        .then(ident())
-        .map(|(op, name)| Expr::UnaryOperation {
-            op: op.into(),
-            operand: Box::new(Expr::Variable(Variable::Plain(name))),
-        }))
-}
+// fn routine_decl<'source, I>(
+// ) -> impl Parser<'source, I, RoutineDecl<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
+// where
+//     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
+// {
+// }
 
 fn r#type<'source, I>(
-) -> impl Parser<'source, I, Type<'source>, extra::Err<Rich<'source, Token<'source>>>>
+) -> impl Parser<'source, I, Type<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
 where
     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
 {
-    let scalar_type = ident()
-        .separated_by(just(Token::Comma))
-        .collect::<Vec<_>>()
-        .delimited_by(just(Token::LeftParen), just(Token::RightParen))
-        .map(Type::Scalar);
-    let subrange_type = constexpr()
-        .then_ignore(just(Token::Elipsis))
-        .then(constexpr())
-        .map(|(lower, upper)| Type::Subrange { lower, upper });
-    let type_identifier = ident().map(Type::Identifier);
-    let simple_type = choice((scalar_type, subrange_type, type_identifier));
+    let ordinal_type = ordinal_type();
 
     let pointer_type =
         tokes([Token::Caret, Token::UpArrow]).ignore_then(ident().map(Type::Pointer));
 
     let set_type = just(Token::Set)
         .ignore_then(just(Token::Of))
-        .ignore_then(simple_type.clone())
+        .ignore_then(ordinal_type.clone())
         .map(UnpackedStructuredType::Set);
 
     recursive(|r#type| {
         let array_type = just(Token::Array)
             .ignore_then(
-                simple_type
+                ordinal_type
                     .clone()
                     .separated_by(just(Token::Comma))
                     .collect::<Vec<_>>()
-                    .delimited_by(just(Token::LeftSquare), just(Token::RightSquare)),
+                    .delimited_by(just(Token::LSquare), just(Token::RSquare)),
             )
             .then_ignore(just(Token::Of))
             .then(r#type.clone())
@@ -235,7 +420,6 @@ where
                 .collect::<Vec<_>>()
                 .then_ignore(just(Token::Colon))
                 .then(r#type.clone())
-                .map(|(fields, r#type)| Field { fields, r#type })
                 .separated_by(just(Token::Semicolon))
                 .collect::<Vec<_>>();
             let variant_part = just(Token::Case)
@@ -247,10 +431,7 @@ where
                         .separated_by(just(Token::Comma))
                         .collect::<Vec<_>>()
                         .then_ignore(just(Token::Colon))
-                        .then(
-                            field_list
-                                .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-                        )
+                        .then(field_list.delimited_by(just(Token::LParen), just(Token::RParen)))
                         .map(|(case_labels, fields)| Variant {
                             case_labels,
                             fields,
@@ -297,6 +478,48 @@ where
             .then(unstructured_type)
             .map(|(packed, r#type)| Type::Structured { packed, r#type });
 
-        choice((simple_type, structured_type, pointer_type))
+        choice((
+            ordinal_type.map(Type::Ordinal),
+            structured_type,
+            pointer_type,
+        ))
     })
+}
+
+fn r#ordinal_type<'source, I>(
+) -> impl Parser<'source, I, OrdinalType<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
+where
+    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
+{
+    let scalar_type = ident()
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
+        .delimited_by(just(Token::LParen), just(Token::RParen))
+        .map(OrdinalType::Enumerated);
+    let subrange_type = constexpr()
+        .then_ignore(just(Token::Ellipsis))
+        .then(constexpr())
+        .map(|(lower, upper)| OrdinalType::Subrange(lower, upper));
+    let ordinal_type_ident = ident().map(OrdinalType::Identifier);
+
+    choice((scalar_type, subrange_type, ordinal_type_ident))
+}
+
+fn constexpr<'source, I>(
+) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
+where
+    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
+{
+    select! {
+        Token::IntLit(num) => Expr::IntLit(num),
+        Token::RealLit(num) => Expr::RealLit(num),
+        Token::StrLit(s) => Expr::StrLit(s),
+        Token::Ident(name) => Expr::Var(Var::Plain(name)),
+    }
+    .or(tokes([Token::Plus, Token::Minus])
+        .then(ident())
+        .map(|(op, name)| Expr::UnaryOp {
+            op: op.into(),
+            operand: Box::new(Expr::Var(Var::Plain(name))),
+        }))
 }

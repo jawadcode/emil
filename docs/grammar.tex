@@ -69,7 +69,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
     
     <proc identification> ::= `procedure' <proc ident>
 
-    <func heading> ::= `function' <ident> [ <formal param list> ]
+    <func heading> ::= `function' <ident> [ <formal param list> ] `:' <result type>
     
     <func identification> ::= `function' <func ident>
 
@@ -85,7 +85,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 {
   \grammarindent2.8in
   \begin{grammar}
-    <value param spec> ::= <ident list> `;' \\
+    <value param spec> ::= <ident list> `:' \\
     ( <type ident> | <conformant array schema> )
 
     <var param spec> ::= `var' <ident list> `:' \\
@@ -149,7 +149,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 
     <case index> ::= <ordinal expr>
 
-    <case> ::= <const> \{ `,' <const> \} `;' <stmt>
+    <case> ::= <const> \{ `,' <const> \} `:' <stmt>
 
     <control var> ::= <variable ident>
   \end{grammar}
@@ -158,7 +158,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 \section{Types}
 
 {
-  \grammarindent2in
+  \grammarindent2.1in
   \begin{grammar}
     <type> ::= <simple type> \alt <structured type> \alt <pointer type>
 
