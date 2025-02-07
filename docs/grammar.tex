@@ -126,7 +126,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 
     <empty stmt> ::= \hphantom{}
 
-    <assignment stmt> ::= ( <var> | <func ident> ) `:=' <expr>
+    <assign stmt> ::= ( <var> | <func ident> ) `:=' <expr>
 
     <procedure stmt> ::= <proc ident> [ <actual param list> | <write param list> ]
 
@@ -151,7 +151,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 
     <case> ::= <const> \{ `,' <const> \} `:' <stmt>
 
-    <control var> ::= <variable ident>
+    <control var> ::= <var ident>
   \end{grammar}
 }
 
@@ -210,7 +210,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 
     <tag field> ::= <ident>
 
-    <const> ::= [ <sign> ] ( <unsigned number> | <const ident> )
+    <const> ::= [ <sign> ] ( <unsigned const> | <const ident> )
   \end{grammar}
 }
 
@@ -225,7 +225,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 
     <term> ::= <factor> \{ <multiplying op> <factor> \}
 
-    <factor> ::= <unsigned const> \alt <bound ident> \alt <variable> \alt <set constructor> \alt <function designator> \alt `not' <factor> \alt `(' <expr> `)'
+    <factor> ::= <unsigned const> \alt <bound ident> \alt <var> \alt <set constructor> \alt <function designator> \alt `not' <factor> \alt `(' <expr> `)'
 
     <relational op> ::= `=' | `<>' | `<' | `>' | `<=' | `>=' | `in'
 

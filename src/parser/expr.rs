@@ -95,31 +95,12 @@ impl<'source> From<Token<'source>> for BinOp {
 }
 
 pub(super) fn expr<'source, I>(
-) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>>
+) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
 where
     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
 {
     recursive(|expr| {
-        let var = recursive(|variable| {
-            let ref_var = variable
-                .clone()
-                .then_ignore(tokes([Token::Caret, Token::UpArrow, Token::At]))
-                .map(|var| Var::RefVar(Box::new(var)));
-            let indexed_var = variable
-                .clone()
-                .then(
-                    expr.clone()
-                        .separated_by(just(Token::Comma))
-                        .collect::<Vec<_>>()
-                        .delimited_by(just(Token::LSquare), just(Token::RSquare)),
-                )
-                .map(|(ident, exprs)| Var::IndexedVar(Box::new(ident), exprs));
-            let field_access = variable
-                .then(just(Token::Dot).ignore_then(ident()))
-                .map(|(ident, field)| Var::FieldAccess(Box::new(ident), field));
-            let var = ident().map(Var::Plain);
-            choice((ref_var, indexed_var, field_access, var))
-        });
+        let var = var();
 
         let set = expr
             .clone()
@@ -202,6 +183,33 @@ where
                 },
                 None => expr,
             })
+    })
+}
+
+fn var<'source, I>(
+) -> impl Parser<'source, I, Var<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
+where
+    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
+{
+    recursive(|variable| {
+        let ref_var = variable
+            .clone()
+            .then_ignore(tokes([Token::Caret, Token::UpArrow, Token::At]))
+            .map(|var| Var::RefVar(Box::new(var)));
+        let indexed_var = variable
+            .clone()
+            .then(
+                expr()
+                    .separated_by(just(Token::Comma))
+                    .collect::<Vec<_>>()
+                    .delimited_by(just(Token::LSquare), just(Token::RSquare)),
+            )
+            .map(|(ident, exprs)| Var::IndexedVar(Box::new(ident), exprs));
+        let field_access = variable
+            .then(just(Token::Dot).ignore_then(ident()))
+            .map(|(ident, field)| Var::FieldAccess(Box::new(ident), field));
+        let var = ident().map(Var::Plain);
+        choice((ref_var, indexed_var, field_access, var))
     })
 }
 

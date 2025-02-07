@@ -39,7 +39,10 @@ pub enum Type<'source> {
 #[derive(Debug, Clone)]
 pub enum OrdinalType<'source> {
     Enumerated(Vec<&'source str>),
-    Subrange(Expr<'source>, Expr<'source>),
+    Subrange {
+        lower: Expr<'source>,
+        upper: Expr<'source>,
+    },
     Identifier(&'source str),
 }
 
@@ -94,7 +97,10 @@ pub struct ProcHeading<'source> {
 #[derive(Debug, Clone)]
 pub enum FuncDecl<'source> {
     Heading(FuncHeading<'source>, PostHeading<'source>),
-    Id(&'source str, Block<'source>),
+    Id {
+        name: &'source str,
+        block: Block<'source>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -348,7 +354,7 @@ where
             .or(func_identification
                 .then_ignore(just(Token::Semicolon))
                 .then(block)
-                .map(|(name, block)| FuncDecl::Id(name, block)));
+                .map(|(name, block)| FuncDecl::Id { name, block }));
 
         let routine_decl = proc_decl
             .map(RoutineDecl::Proc)
@@ -499,13 +505,13 @@ where
     let subrange_type = constexpr()
         .then_ignore(just(Token::Ellipsis))
         .then(constexpr())
-        .map(|(lower, upper)| OrdinalType::Subrange(lower, upper));
+        .map(|(lower, upper)| OrdinalType::Subrange { lower, upper });
     let ordinal_type_ident = ident().map(OrdinalType::Identifier);
 
     choice((scalar_type, subrange_type, ordinal_type_ident))
 }
 
-fn constexpr<'source, I>(
+pub(super) fn constexpr<'source, I>(
 ) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
 where
     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
