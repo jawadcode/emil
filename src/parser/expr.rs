@@ -113,10 +113,8 @@ pub(super) fn expr<'source>(
             )
             .map(|(name, args)| Expr::FuncCall(name, args));
 
-        let factor = just(Token::Not)
-            .ignored()
-            .repeated()
-            .then(choice((
+        let factor = recursive(|factor| {
+            choice((
                 func_designator,
                 var().map(Expr::Var),
                 select! {
@@ -127,9 +125,9 @@ pub(super) fn expr<'source>(
                 },
                 set,
                 expr.delimited_by(just(Token::LParen), just(Token::RParen)),
-                // just(Token::Not).ignore_then(factor),
-            )))
-            .map(|(nots, factor)| factor);
+                just(Token::Not).ignore_then(factor),
+            ))
+        });
 
         let multiplicative_op = tokes([
             Token::Asterisk,
