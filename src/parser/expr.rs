@@ -1,8 +1,8 @@
-use chumsky::{error::Rich, extra, input::ValueInput, prelude::*, span::SimpleSpan, Parser};
+use chumsky::{error::Simple, prelude::*, Parser};
 
-use crate::lexer::Token;
+use crate::lexer::{parse_real, Token};
 
-use super::{ident, tokes};
+use super::{ident, tokes, ParserError};
 
 #[derive(Debug, Clone)]
 pub enum Expr<'source> {
@@ -94,14 +94,9 @@ impl<'source> From<Token<'source>> for BinOp {
     }
 }
 
-pub(super) fn expr<'source, I>(
-) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+pub(super) fn expr<'source>(
+) -> impl Parser<Token<'source>, Expr<'source>, Error = ParserError<'source>> + Clone {
     recursive(|expr| {
-        let var = var();
-
         let set = expr
             .clone()
             .separated_by(just(Token::Comma))
@@ -121,14 +116,12 @@ where
         let factor = recursive(|factor| {
             choice((
                 func_designator,
-                var.map(Expr::Var),
+                var().map(Expr::Var),
                 select! {
                     Token::IntLit(num) => Expr::IntLit(num),
-                    Token::RealLit(num) => Expr::RealLit(num),
+                    Token::RealLit(num) => Expr::RealLit(parse_real(num)),
                     Token::StrLit(s) => Expr::StrLit(s),
                     Token::Nil => Expr::Nil,
-                    Token::True => Expr::True,
-                    Token::False => Expr::False,
                 },
                 set,
                 expr.delimited_by(just(Token::LParen), just(Token::RParen)),
@@ -186,11 +179,8 @@ where
     })
 }
 
-fn var<'source, I>(
-) -> impl Parser<'source, I, Var<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+pub(super) fn var<'source>(
+) -> impl Parser<Token<'source>, Var<'source>, Error = ParserError<'source>> + Clone {
     recursive(|variable| {
         let ref_var = variable
             .clone()
@@ -213,16 +203,14 @@ where
     })
 }
 
-fn ops<'source, I>(
-    ops: impl Parser<'source, I, Token<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone,
-    factor: impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone,
-) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+fn ops<'source>(
+    ops: impl Parser<Token<'source>, Token<'source>, Error = ParserError<'source>> + Clone,
+    factor: impl Parser<Token<'source>, Expr<'source>, Error = ParserError<'source>> + Clone,
+) -> impl Parser<Token<'source>, Expr<'source>, Error = ParserError<'source>> + Clone {
     factor
         .clone()
-        .foldl(ops.then(factor).repeated(), |lhs, (op, rhs)| Expr::BinOp {
+        .then(ops.then(factor).repeated())
+        .foldl(|lhs, (op, rhs)| Expr::BinOp {
             op: op.into(),
             left: Box::new(lhs),
             right: Box::new(rhs),

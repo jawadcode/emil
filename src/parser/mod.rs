@@ -2,41 +2,34 @@ mod expr;
 mod program;
 mod stmt;
 
-use chumsky::{
-    input::{Stream, ValueInput},
-    prelude::*,
-};
+use chumsky::{prelude::*, Stream};
 use program::{program, Program};
 
-use crate::lexer::{Lexer, Token};
+use crate::{
+    lexer::{Lexer, Token},
+    utils::Span,
+};
 
-pub type Span = SimpleSpan;
-pub type Spanned<T> = (T, Span);
+type ParserError<'source> = Simple<Token<'source>, Span>;
 
-pub fn parse(source: &str) -> Result<Program<'_>, Vec<Rich<'_, Token<'_>>>> {
-    let token_iter = Lexer::new(source).map(|(token, span)| (token, span.into()));
+pub fn parse<'source>(source: &'source str) -> Result<Program<'source>, Vec<ParserError<'source>>> {
+    let token_iter = Lexer::new(source).map(|(token, span)| (token, span));
 
-    let token_stream = Stream::from_iter(token_iter).spanned((source.len()..source.len()).into());
+    let token_stream = Stream::from_iter((source.len()..source.len()).into(), token_iter);
 
-    program().parse(token_stream).into_result()
+    program().parse(token_stream)
 }
 
-fn ident<'source, I>(
-) -> impl Parser<'source, I, &'source str, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+fn ident<'source>(
+) -> impl Parser<Token<'source>, &'source str, Error = ParserError<'source>> + Clone {
     select! {
         Token::Ident(ident) => ident,
     }
     .labelled("identifier")
 }
 
-fn tokes<'source, I, const N: usize>(
+fn tokes<'source, const N: usize>(
     tokens: [Token<'source>; N],
-) -> impl Parser<'source, I, Token<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+) -> impl Parser<Token<'source>, Token<'source>, Error = ParserError<'source>> + Clone {
     choice(tokens.map(just))
 }

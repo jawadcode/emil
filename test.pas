@@ -1,1 +1,13 @@
-matrix[1, 2] + add(123, 456) * sub(789, 123) <> 789432 and true
+program Test(Output);
+function Add(a : integer, b : integer) : integer; begin
+   Add := a + b;
+end;
+function Sub(a : integer, b : integer) : integer; begin
+   Sub := a - b;
+end;
+function Idk(matrix : array [1..3] of array [1..3] of integer): boolean; begin
+   Idk := true
+end;
+begin
+   Writeln("Hello World");
+end.

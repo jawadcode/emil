@@ -1,12 +1,12 @@
-use chumsky::{error::Rich, extra, input::ValueInput, prelude::*, span::SimpleSpan, Parser};
+use chumsky::{error::Simple, prelude::*, Parser};
 
-use crate::lexer::Token;
+use crate::lexer::{parse_real, Token};
 
 use super::{
     expr::{Expr, Var},
     ident,
     stmt::{compound_stmt, CompoundStmt},
-    tokes,
+    tokes, ParserError,
 };
 
 #[derive(Debug, Clone)]
@@ -156,11 +156,8 @@ pub struct IndexTypeSpec<'source> {
     r#type: &'source str,
 }
 
-pub(super) fn program<'source, I>(
-) -> impl Parser<'source, I, Program<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+pub(super) fn program<'source>(
+) -> impl Parser<Token<'source>, Program<'source>, Error = ParserError<'source>> + Clone {
     just(Token::Program)
         .ignore_then(ident())
         .then(
@@ -180,11 +177,8 @@ where
         })
 }
 
-fn block<'source, I>(
-) -> impl Parser<'source, I, Block<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+fn block<'source>(
+) -> impl Parser<Token<'source>, Block<'source>, Error = ParserError<'source>> + Clone {
     recursive(|block| {
         let label_decls = just(Token::Label)
             .ignore_then(
@@ -385,18 +379,8 @@ where
     })
 }
 
-// fn routine_decl<'source, I>(
-// ) -> impl Parser<'source, I, RoutineDecl<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-// where
-//     I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-// {
-// }
-
-fn r#type<'source, I>(
-) -> impl Parser<'source, I, Type<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+fn r#type<'source>(
+) -> impl Parser<Token<'source>, Type<'source>, Error = ParserError<'source>> + Clone {
     let ordinal_type = ordinal_type();
 
     let pointer_type =
@@ -492,11 +476,8 @@ where
     })
 }
 
-fn r#ordinal_type<'source, I>(
-) -> impl Parser<'source, I, OrdinalType<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+fn r#ordinal_type<'source>(
+) -> impl Parser<Token<'source>, OrdinalType<'source>, Error = ParserError<'source>> + Clone {
     let scalar_type = ident()
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
@@ -511,14 +492,11 @@ where
     choice((scalar_type, subrange_type, ordinal_type_ident))
 }
 
-pub(super) fn constexpr<'source, I>(
-) -> impl Parser<'source, I, Expr<'source>, extra::Err<Rich<'source, Token<'source>>>> + Clone
-where
-    I: ValueInput<'source, Token = Token<'source>, Span = SimpleSpan>,
-{
+pub(super) fn constexpr<'source>(
+) -> impl Parser<Token<'source>, Expr<'source>, Error = ParserError<'source>> + Clone {
     select! {
         Token::IntLit(num) => Expr::IntLit(num),
-        Token::RealLit(num) => Expr::RealLit(num),
+        Token::RealLit(num) => Expr::RealLit(parse_real(num)),
         Token::StrLit(s) => Expr::StrLit(s),
         Token::Ident(name) => Expr::Var(Var::Plain(name)),
     }

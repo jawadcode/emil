@@ -7,6 +7,8 @@ use std::{
 use lexical_core::{parse_with_options, NumberFormatBuilder, ParseFloatOptions};
 use logos::{Lexer as LogosLexer, Logos, Skip, SpannedIter};
 
+use crate::utils::Span;
+
 /// A wrapper around [logos::SpannedIter] that flattens the [Result<Token>] returned by
 /// [Iterator::next] into just [Token] by making use of the [Token::Error] variant.
 pub struct Lexer<'source> {
@@ -22,93 +24,94 @@ impl<'source> Lexer<'source> {
 }
 
 impl<'source> Iterator for Lexer<'source> {
-    type Item = (Token<'source>, Range<usize>);
+    type Item = (Token<'source>, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.logos_iter
             .next()
-            .map(|(res, range)| (res.unwrap_or(Token::Error), range))
+            .map(|(res, range)| (res.unwrap_or(Token::Error), range.into()))
     }
 }
 
 #[rustfmt::skip]
-#[derive(Logos, Debug, Clone, Copy, PartialEq)]
+#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Token<'source> {
-	/* KEYWORDS */
-	#[token("program", ignore(case))]   Program,
-	#[token("label", ignore(case))]     Label,
-	#[token("const", ignore(case))]     Const,
-	#[token("type", ignore(case))]      Type,
-	#[token("procedure", ignore(case))] Procedure,
-	#[token("function", ignore(case))]  Function,
-	#[token("var", ignore(case))]       Var,
-	#[token("begin", ignore(case))]     Begin,
-	#[token("end", ignore(case))]       End,
-	#[token("div", ignore(case))]       Div,
-	#[token("mod", ignore(case))]       Mod,
-	#[token("and", ignore(case))]       And,
-	#[token("not", ignore(case))]       Not,
-	#[token("or", ignore(case))]        Or,
-	#[token("in", ignore(case))]        In,
-	#[token("array", ignore(case))]     Array,
-	#[token("file", ignore(case))]      File,
-	#[token("record", ignore(case))]    Record,
-	#[token("set", ignore(case))]       Set,
-	#[token("packed", ignore(case))]    Packed,
-	#[token("case", ignore(case))]      Case,
-	#[token("of", ignore(case))]        Of,
-	#[token("for", ignore(case))]       For,
-	#[token("to", ignore(case))]        To,
-	#[token("downto", ignore(case))]    DownTo,
-	#[token("do", ignore(case))]        Do,
-	#[token("if", ignore(case))]        If,
-	#[token("then", ignore(case))]      Then,
-	#[token("else", ignore(case))]      Else,
-	#[token("goto", ignore(case))]      Goto,
-	#[token("repeat", ignore(case))]    Repeat,
-	#[token("until", ignore(case))]     Until,
-	#[token("while", ignore(case))]     While,
-	#[token("with", ignore(case))]      With,
+    /* KEYWORDS */
+    #[token("program", ignore(case))]   Program,
+    #[token("label", ignore(case))]     Label,
+    #[token("const", ignore(case))]     Const,
+    #[token("type", ignore(case))]      Type,
+    #[token("procedure", ignore(case))] Procedure,
+    #[token("function", ignore(case))]  Function,
+    #[token("var", ignore(case))]       Var,
+    #[token("begin", ignore(case))]     Begin,
+    #[token("end", ignore(case))]       End,
+    #[token("div", ignore(case))]       Div,
+    #[token("mod", ignore(case))]       Mod,
+    #[token("and", ignore(case))]       And,
+    #[token("not", ignore(case))]       Not,
+    #[token("or", ignore(case))]        Or,
+    #[token("in", ignore(case))]        In,
+    #[token("array", ignore(case))]     Array,
+    #[token("file", ignore(case))]      File,
+    #[token("record", ignore(case))]    Record,
+    #[token("set", ignore(case))]       Set,
+    #[token("packed", ignore(case))]    Packed,
+    #[token("case", ignore(case))]      Case,
+    #[token("of", ignore(case))]        Of,
+    #[token("for", ignore(case))]       For,
+    #[token("to", ignore(case))]        To,
+    #[token("downto", ignore(case))]    DownTo,
+    #[token("do", ignore(case))]        Do,
+    #[token("if", ignore(case))]        If,
+    #[token("then", ignore(case))]      Then,
+    #[token("else", ignore(case))]      Else,
+    #[token("goto", ignore(case))]      Goto,
+    #[token("repeat", ignore(case))]    Repeat,
+    #[token("until", ignore(case))]     Until,
+    #[token("while", ignore(case))]     While,
+    #[token("with", ignore(case))]      With,
 
-	/* SYMBOLS */
-	#[token("+")]  Plus,
-	#[token("-")]  Minus,
-	#[token("*")]  Asterisk,
-	#[token("/")]  Slash,
-	#[token("=")]  Eq,
-	#[token("<")]  LT,
-	#[token(">")]  GT,
-	#[token("[")]  LSquare,
-	#[token("(.")] LSquareAlt,
-	#[token("]")]  RSquare,
-	#[token(".)")] RSquareAlt,
-	#[token(".")]  Dot,
-	#[token(",")]  Comma,
-	#[token(":")]  Colon,
-	#[token(";")]  Semicolon,
-	#[token("↑")]  UpArrow,
-	#[token("^")]  Caret,
-	#[token("@")]  At,
-	#[token("(")]  LParen,
-	#[token(")")]  RParen,
-	#[token("<>")] NEq,
-	#[token("<=")] LEq,
-        #[token(">=")] GEq,
-	#[token(":=")] Assign,
-	#[token("..")] Ellipsis,
+    /* SYMBOLS */
+    #[token("+")]  Plus,
+    #[token("-")]  Minus,
+    #[token("*")]  Asterisk,
+    #[token("/")]  Slash,
+    #[token("=")]  Eq,
+    #[token("<")]  LT,
+    #[token(">")]  GT,
+    #[token("[")]  LSquare,
+    #[token("(.")] LSquareAlt,
+    #[token("]")]  RSquare,
+    #[token(".)")] RSquareAlt,
+    #[token(".")]  Dot,
+    #[token(",")]  Comma,
+    #[token(":")]  Colon,
+    #[token(";")]  Semicolon,
+    #[token("↑")]  UpArrow,
+    #[token("^")]  Caret,
+    #[token("@")]  At,
+    #[token("(")]  LParen,
+    #[token(")")]  RParen,
+    #[token("<>")] NEq,
+    #[token("<=")] LEq,
+    #[token(">=")] GEq,
+    #[token(":=")] Becomes,
+    #[token("..")] Ellipsis,
 
-	/* LITERALS */
-	#[token("nil", ignore(case))]   Nil,
-	#[token("true", ignore(case))]  True,
-	#[token("false", ignore(case))] False,
-	#[regex(r"([a-z][a-z0-9]*)")]   Ident(&'source str),
-	#[regex(r"[0-9]+", parse_unsigned_integer)]                        UIntLit(u64),
-	#[regex(r"(\+|-)[0-9]+", parse_int)]                               IntLit(i64),
-        #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+",            parse_real)]
-        #[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?", parse_real)] RealLit(f64),
-	#[regex(r"'([^']|'')+'")]                                          StrLit(&'source str),
+    /* LITERALS */
+    #[token("nil", ignore(case))]                          Nil,
+    // Both are just built-in constant identifiers 🙄
+    // #[token("true", ignore(case))]                      True,
+    // #[token("false", ignore(case))]                     False,
+    #[regex(r"([a-z][a-z0-9]*)")]   Ident(&'source str),
+    #[regex(r"[0-9]+", parse_unsigned_integer)]            UIntLit(u64),
+    #[regex(r"(\+|-)[0-9]+", parse_int)]                   IntLit(i64),
+    #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+")]
+    #[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] RealLit(&'source str),
+    #[regex(r"'([^']|'')+'")]                              StrLit(&'source str),
 
-	#[regex(r"\{|\(\*", comment_lexer)]
+    #[regex(r"\{|\(\*", comment_lexer)]
     #[regex(r"[\r\n\t\f\v ]+", logos::skip)]
     Error,
 }
@@ -142,8 +145,7 @@ const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .required_mantissa_sign(true)
     .build();
 
-fn parse_real<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> f64 {
-    let tok = lex.slice();
+pub(super) fn parse_real<'source>(tok: &'source str) -> f64 {
     parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
         .unwrap()
 }
@@ -230,11 +232,9 @@ impl Display for Token<'_> {
             Token::NEq => f.write_str("<>"),
             Token::LEq => f.write_str("<="),
             Token::GEq => f.write_str(">="),
-            Token::Assign => f.write_str(":="),
+            Token::Becomes => f.write_str(":="),
             Token::Ellipsis => f.write_str(".."),
             Token::Nil => f.write_str("nil"),
-            Token::True => f.write_str("true"),
-            Token::False => f.write_str("false"),
             Token::Ident(ident) => write!(f, "identifier '{ident}'"),
             Token::UIntLit(uintlit) => {
                 write!(f, "unsigned integer literal '{uintlit}'")

@@ -259,7 +259,7 @@ This document details a hierarchical EBNF grammar for Pascal per the ISO 7185:19
 
     <actual param> ::= <expr> \alt <var> \alt <proc ident> \alt <func ident>
 
-    <write param list> ::= `(' ( <file var> | <write param> ) `,' \{  `,' <write param> \} `)'
+    <write param list> ::= `(' ( <file var> | <write param> ) \{  `,' <write param> \} `)'
 
     <write param> ::= <expr> [ `:' <integer expr> [ `:' <integer expr> ] ]
   \end{grammar}

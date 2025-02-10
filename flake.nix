@@ -2,7 +2,7 @@
   description = "A pascal compiler, named after the legend Niklaus Emil Wirth";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -30,7 +30,7 @@
         (crane.mkLib pkgs)
         .overrideToolchain
         (pkgs.rust-bin.stable.latest.default.override
-          {extensions = ["rust-src" "rust-analyzer"];});
+          {extensions = ["rust-src" "rust-analyzer" "llvm-tools"];});
 
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
@@ -50,7 +50,7 @@
       devShells = let
         emilDevShell = craneLib.devShell {
           checks = self.checks.${system};
-          packages = [pkgs.taplo];
+          packages = [pkgs.taplo pkgs.lldb_19];
         };
       in {
         emil = emilDevShell;
