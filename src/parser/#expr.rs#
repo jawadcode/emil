@@ -116,6 +116,7 @@ pub(super) fn expr<'source>(
         let factor = just(Token::Not)
             .ignored()
             .repeated()
+            .collect::<Vec<()>>()
             .then(choice((
                 func_designator,
                 var().map(Expr::Var),

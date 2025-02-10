@@ -23,6 +23,7 @@ fn main() {
     };
 
     let source_content = fs::read_to_string(&source_path).unwrap();
+    let source_content = "".to_string();
 
     match parse(&source_content) {
         Ok(program) => println!("result: {:?}", program.clone()),
