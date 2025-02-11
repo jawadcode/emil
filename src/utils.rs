@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Debug, Display},
-    ops::{Add, Range},
+    ops::{Add, Index, Range},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +26,14 @@ impl Add for Span {
             start: self.start,
             end: rhs.end,
         }
+    }
+}
+
+impl Index<Span> for str {
+    type Output = str;
+
+    fn index(&self, index: Span) -> &Self::Output {
+        &self[index.start..index.end]
     }
 }
 

@@ -13,6 +13,7 @@ pub mod program;
 pub mod stmt;
 
 pub struct Parser<'source> {
+    source: &'source str,
     lexer: Peekable<Lexer<'source>>,
 }
 
@@ -37,6 +38,7 @@ pub type ParseResult<T> = Result<T, SyntaxError>;
 impl<'source> Parser<'source> {
     pub fn new(source: &'source str) -> Self {
         Self {
+            source,
             lexer: Lexer::new(source).peekable(),
         }
     }
@@ -80,5 +82,20 @@ impl<'source> Parser<'source> {
             }),
             tok => Ok(tok),
         }
+    }
+
+    /// Advances the lexer by one token, usually for when a token has been peeked already.
+    fn advance(&mut self) {
+        self.lexer.next().unwrap();
+    }
+
+    /// [`expect`]s a [token] and then extracts its source.
+    fn expect_source(&mut self, token: TokenKind) -> ParseResult<&'source str> {
+        self.expect(token).map(|tok| &self.source[tok.span])
+    }
+
+    /// Gets the next token and extracts its source.
+    fn next_source(&mut self) -> &'source str {
+        &self.source[self.lexer.next().unwrap().span]
     }
 }

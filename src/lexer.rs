@@ -139,11 +139,11 @@ fn parse_uint<C: Iterator<Item = u8>>(chars: &mut C) -> u64 {
         .fold(0, |acc, d| acc * 10 + (d as u64))
 }
 
-fn parse_unsigned_integer(tok: &str) -> u64 {
+pub fn parse_unsigned_integer(tok: &str) -> u64 {
     parse_uint(&mut tok.bytes())
 }
 
-fn parse_int(tok: &str) -> i64 {
+pub fn parse_int(tok: &str) -> i64 {
     let mut chars = tok.bytes().peekable();
     let sign = chars.next_if(|c| [b'+', b'-'].contains(c));
     let num = parse_uint(&mut chars) as i64;
@@ -162,7 +162,7 @@ const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .required_mantissa_sign(true)
     .build();
 
-pub(super) fn parse_real(tok: &str) -> f64 {
+pub fn parse_real(tok: &str) -> f64 {
     parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
         .unwrap()
 }
