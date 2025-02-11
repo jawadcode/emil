@@ -1,14 +1,6 @@
-use std::{
-    env,
-    fmt::{self, Display},
-    fs,
-    ops::Range,
-};
+use std::{env, fs, process};
 
-use ariadne::{Color, Label, Report, ReportKind, Source};
-
-use parser::parse;
-use utils::SpanInfo;
+use parser::{program::program, Parser};
 
 mod lexer;
 mod parser;
@@ -23,24 +15,14 @@ fn main() {
     };
 
     let source_content = fs::read_to_string(&source_path).unwrap();
-    let source_content = "".to_string();
 
-    match parse(&source_content) {
+    let mut parser = Parser::new(&source_content);
+
+    match program(&mut parser) {
         Ok(program) => println!("result: {:?}", program.clone()),
-        Err(errs) => {
-            for err in errs {
-                Report::build(ReportKind::Error, SpanInfo(source_path.clone(), err.span()))
-                    .with_code(3)
-                    .with_message(err.to_string())
-                    .with_label(
-                        Label::new(SpanInfo(source_path.clone(), err.span().into()))
-                            .with_message(format!("{}", err.reason()))
-                            .with_color(Color::Red),
-                    )
-                    .finish()
-                    .print((source_path.clone(), Source::from(&source_content)))
-                    .unwrap();
-            }
+        Err(err) => {
+            eprintln!("{err}");
+            process::exit(1)
         }
     }
 }

@@ -1,12 +1,9 @@
-use ariadne::Span as AriadneSpan;
-use chumsky::Span as ChumskySpan;
 use std::{
     fmt::{self, Debug, Display},
-    hash::Hash,
-    ops::Range,
+    ops::{Add, Range},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct Span {
     start: usize,
     end: usize,
@@ -21,50 +18,51 @@ impl From<Range<usize>> for Span {
     }
 }
 
-impl ChumskySpan for Span {
-    type Context = ();
+impl Add for Span {
+    type Output = Span;
 
-    type Offset = usize;
-
-    fn new((): Self::Context, range: Range<Self::Offset>) -> Self {
-        range.into()
-    }
-
-    fn context(&self) -> Self::Context {
-        ()
-    }
-
-    fn start(&self) -> Self::Offset {
-        self.start
-    }
-
-    fn end(&self) -> Self::Offset {
-        self.end
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            start: self.start,
+            end: rhs.end,
+        }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SpanInfo(pub String, pub Span);
+pub struct Spanned<T: Spannable> {
+    pub span: Span,
+    pub node: T,
+}
 
-impl AriadneSpan for SpanInfo {
-    type SourceId = String;
+pub trait Spannable {}
 
-    fn source(&self) -> &Self::SourceId {
-        &self.0
+impl<T> Spannable for T where T: Debug + Clone {}
+
+impl<T: Spannable> Spanned<T> {
+    pub fn map<U: Spannable>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
+        Spanned {
+            span: self.span,
+            node: f(self.node),
+        }
     }
 
-    fn start(&self) -> usize {
-        self.1.start
-    }
-
-    fn end(&self) -> usize {
-        self.1.end
+    /// Totally not `liftA2`
+    pub fn merge<U: Spannable, V: Spannable>(
+        self,
+        other: Spanned<U>,
+        f: impl FnOnce(T, U) -> V,
+    ) -> Spanned<V> {
+        Spanned {
+            span: self.span + other.span,
+            node: f(self.node, other.node),
+        }
     }
 }
 
-impl Into<Range<usize>> for Span {
-    fn into(self) -> Range<usize> {
-        self.start..self.end
+impl From<Span> for Range<usize> {
+    fn from(value: Span) -> Self {
+        value.start..value.end
     }
 }
 

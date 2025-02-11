@@ -5,6 +5,5 @@ edition = "2021"
 
 [dependencies]
 ariadne = "0.5"
-chumsky = "0.9"
 lexical-core = { version = "1.0", features = [ "format" ] }
 logos = "0.15"

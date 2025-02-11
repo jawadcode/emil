@@ -1,41 +1,56 @@
 use std::{
     fmt::{self, Display, Write},
     num::NonZero,
-    ops::Range,
 };
 
 use lexical_core::{parse_with_options, NumberFormatBuilder, ParseFloatOptions};
 use logos::{Lexer as LogosLexer, Logos, Skip, SpannedIter};
 
-use crate::utils::Span;
+use crate::utils::Spanned;
 
-/// A wrapper around [logos::SpannedIter] that flattens the [Result<Token>] returned by
-/// [Iterator::next] into just [Token] by making use of the [Token::Error] variant.
+/// A wrapper around [`logos::SpannedIter`] that flattens the [`Result<Token>`] returned by
+/// [`Iterator::next`] into just [`Token`] by making use of the [`Token::Error`] variant.
+///
+/// N.B. This is an awful API change on the part of [`logos`] and I hope it is reverted.
 pub struct Lexer<'source> {
-    logos_iter: SpannedIter<'source, Token<'source>>,
+    eof: bool,
+    logos_iter: SpannedIter<'source, TokenKind>,
+    end: usize,
 }
 
 impl<'source> Lexer<'source> {
     pub fn new(source: &'source str) -> Self {
         Self {
-            logos_iter: Token::lexer(source).spanned(),
+            eof: false,
+            logos_iter: TokenKind::lexer(source).spanned(),
+            end: source.len(),
         }
     }
 }
 
-impl<'source> Iterator for Lexer<'source> {
-    type Item = (Token<'source>, Span);
+impl Iterator for Lexer<'_> {
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.logos_iter
-            .next()
-            .map(|(res, range)| (res.unwrap_or(Token::Error), range.into()))
+        match self.logos_iter.next() {
+            None if self.eof => None,
+            None => Some(Token {
+                span: (self.end..self.end).into(),
+                node: TokenKind::Eof,
+            }),
+            Some((tok, span)) => Some(Token {
+                span: span.into(),
+                node: tok.unwrap_or(TokenKind::Error),
+            }),
+        }
     }
 }
 
+pub type Token = Spanned<TokenKind>;
+
 #[rustfmt::skip]
-#[derive(Logos, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Token<'source> {
+#[derive(Logos, Debug, Clone, Copy, PartialEq, Hash)]
+pub enum TokenKind {
     /* KEYWORDS */
     #[token("program", ignore(case))]   Program,
     #[token("label", ignore(case))]     Label,
@@ -102,32 +117,34 @@ pub enum Token<'source> {
     /* LITERALS */
     #[token("nil", ignore(case))]                          Nil,
     // Both are just built-in constant identifiers 🙄
-    // #[token("true", ignore(case))]                      True,
-    // #[token("false", ignore(case))]                     False,
-    #[regex(r"([a-z][a-z0-9]*)")]   Ident(&'source str),
-    #[regex(r"[0-9]+", parse_unsigned_integer)]            UIntLit(u64),
-    #[regex(r"(\+|-)[0-9]+", parse_int)]                   IntLit(i64),
+    // #[token("true", ignore(case))] True,
+    // #[token("false", ignore(case))] False,
+    #[regex(r"([a-z][a-z0-9]*)")]                          Ident,
+    #[regex(r"[0-9]+")]                                    UIntLit,
+    #[regex(r"(\+|-)[0-9]+")]                              IntLit,
     #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+")]
-    #[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] RealLit(&'source str),
-    #[regex(r"'([^']|'')+'")]                              StrLit(&'source str),
+    #[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] RealLit,
+    #[regex(r"'([^']|'')+'")]                              StrLit,
 
     #[regex(r"\{|\(\*", comment_lexer)]
     #[regex(r"[\r\n\t\f\v ]+", logos::skip)]
     Error,
+
+    Eof,
 }
 
-fn parse_uint<'source, C: Iterator<Item = u8>>(chars: &mut C) -> u64 {
+fn parse_uint<C: Iterator<Item = u8>>(chars: &mut C) -> u64 {
     chars
         .map(|c| c - b'0')
         .fold(0, |acc, d| acc * 10 + (d as u64))
 }
 
-fn parse_unsigned_integer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> u64 {
-    parse_uint(&mut lex.slice().bytes())
+fn parse_unsigned_integer(tok: &str) -> u64 {
+    parse_uint(&mut tok.bytes())
 }
 
-fn parse_int<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> i64 {
-    let mut chars = lex.slice().bytes().peekable();
+fn parse_int(tok: &str) -> i64 {
+    let mut chars = tok.bytes().peekable();
     let sign = chars.next_if(|c| [b'+', b'-'].contains(c));
     let num = parse_uint(&mut chars) as i64;
     match sign {
@@ -145,12 +162,12 @@ const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .required_mantissa_sign(true)
     .build();
 
-pub(super) fn parse_real<'source>(tok: &'source str) -> f64 {
+pub(super) fn parse_real(tok: &str) -> f64 {
     parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
         .unwrap()
 }
 
-fn comment_lexer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> Skip {
+fn comment_lexer(lex: &mut LogosLexer<'_, TokenKind>) -> Skip {
     let rem = lex.remainder();
     let mut previous = None;
 
@@ -172,77 +189,76 @@ fn comment_lexer<'source>(lex: &mut LogosLexer<'source, Token<'source>>) -> Skip
     Skip
 }
 
-impl Display for Token<'_> {
+impl Display for TokenKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Token::Program => f.write_str("program"),
-            Token::Label => f.write_str("label"),
-            Token::Const => f.write_str("const"),
-            Token::Type => f.write_str("type"),
-            Token::Procedure => f.write_str("procedure"),
-            Token::Function => f.write_str("function"),
-            Token::Var => f.write_str("var"),
-            Token::Begin => f.write_str("begin"),
-            Token::End => f.write_str("end"),
-            Token::Div => f.write_str("div"),
-            Token::Mod => f.write_str("mod"),
-            Token::And => f.write_str("and"),
-            Token::Not => f.write_str("not"),
-            Token::Or => f.write_str("or"),
-            Token::In => f.write_str("in"),
-            Token::Array => f.write_str("array"),
-            Token::File => f.write_str("file"),
-            Token::Record => f.write_str("record"),
-            Token::Set => f.write_str("set"),
-            Token::Packed => f.write_str("packed"),
-            Token::Case => f.write_str("case"),
-            Token::Of => f.write_str("of"),
-            Token::For => f.write_str("for"),
-            Token::To => f.write_str("to"),
-            Token::DownTo => f.write_str("downto"),
-            Token::Do => f.write_str("do"),
-            Token::If => f.write_str("if"),
-            Token::Then => f.write_str("then"),
-            Token::Else => f.write_str("else"),
-            Token::Goto => f.write_str("goto"),
-            Token::Repeat => f.write_str("repeat"),
-            Token::Until => f.write_str("until"),
-            Token::While => f.write_str("while"),
-            Token::With => f.write_str("with"),
-            Token::Plus => f.write_char('+'),
-            Token::Minus => f.write_char('-'),
-            Token::Asterisk => f.write_char('*'),
-            Token::Slash => f.write_char('/'),
-            Token::Eq => f.write_char('='),
-            Token::LT => f.write_char('<'),
-            Token::GT => f.write_char('>'),
-            Token::LSquare => f.write_char('['),
-            Token::LSquareAlt => f.write_str("(."),
-            Token::RSquare => f.write_char(']'),
-            Token::RSquareAlt => f.write_str(".)"),
-            Token::Dot => f.write_char('.'),
-            Token::Comma => f.write_char(','),
-            Token::Colon => f.write_char(':'),
-            Token::Semicolon => f.write_char(';'),
-            Token::UpArrow => f.write_char('↑'),
-            Token::Caret => f.write_char('^'),
-            Token::At => f.write_char('@'),
-            Token::LParen => f.write_char('('),
-            Token::RParen => f.write_char(')'),
-            Token::NEq => f.write_str("<>"),
-            Token::LEq => f.write_str("<="),
-            Token::GEq => f.write_str(">="),
-            Token::Becomes => f.write_str(":="),
-            Token::Ellipsis => f.write_str(".."),
-            Token::Nil => f.write_str("nil"),
-            Token::Ident(ident) => write!(f, "identifier '{ident}'"),
-            Token::UIntLit(uintlit) => {
-                write!(f, "unsigned integer literal '{uintlit}'")
-            }
-            Token::IntLit(intlit) => write!(f, "signed integer literal '{intlit}'"),
-            Token::RealLit(reallit) => write!(f, "real literal '{reallit}'"),
-            Token::StrLit(strlit) => write!(f, "string literal {strlit}"),
-            Token::Error => f.write_str("invalid token"),
+            TokenKind::Program => f.write_str("program"),
+            TokenKind::Label => f.write_str("label"),
+            TokenKind::Const => f.write_str("const"),
+            TokenKind::Type => f.write_str("type"),
+            TokenKind::Procedure => f.write_str("procedure"),
+            TokenKind::Function => f.write_str("function"),
+            TokenKind::Var => f.write_str("var"),
+            TokenKind::Begin => f.write_str("begin"),
+            TokenKind::End => f.write_str("end"),
+            TokenKind::Div => f.write_str("div"),
+            TokenKind::Mod => f.write_str("mod"),
+            TokenKind::And => f.write_str("and"),
+            TokenKind::Not => f.write_str("not"),
+            TokenKind::Or => f.write_str("or"),
+            TokenKind::In => f.write_str("in"),
+            TokenKind::Array => f.write_str("array"),
+            TokenKind::File => f.write_str("file"),
+            TokenKind::Record => f.write_str("record"),
+            TokenKind::Set => f.write_str("set"),
+            TokenKind::Packed => f.write_str("packed"),
+            TokenKind::Case => f.write_str("case"),
+            TokenKind::Of => f.write_str("of"),
+            TokenKind::For => f.write_str("for"),
+            TokenKind::To => f.write_str("to"),
+            TokenKind::DownTo => f.write_str("downto"),
+            TokenKind::Do => f.write_str("do"),
+            TokenKind::If => f.write_str("if"),
+            TokenKind::Then => f.write_str("then"),
+            TokenKind::Else => f.write_str("else"),
+            TokenKind::Goto => f.write_str("goto"),
+            TokenKind::Repeat => f.write_str("repeat"),
+            TokenKind::Until => f.write_str("until"),
+            TokenKind::While => f.write_str("while"),
+            TokenKind::With => f.write_str("with"),
+            TokenKind::Plus => f.write_char('+'),
+            TokenKind::Minus => f.write_char('-'),
+            TokenKind::Asterisk => f.write_char('*'),
+            TokenKind::Slash => f.write_char('/'),
+            TokenKind::Eq => f.write_char('='),
+            TokenKind::LT => f.write_char('<'),
+            TokenKind::GT => f.write_char('>'),
+            TokenKind::LSquare => f.write_char('['),
+            TokenKind::LSquareAlt => f.write_str("(."),
+            TokenKind::RSquare => f.write_char(']'),
+            TokenKind::RSquareAlt => f.write_str(".)"),
+            TokenKind::Dot => f.write_char('.'),
+            TokenKind::Comma => f.write_char(','),
+            TokenKind::Colon => f.write_char(':'),
+            TokenKind::Semicolon => f.write_char(';'),
+            TokenKind::UpArrow => f.write_char('↑'),
+            TokenKind::Caret => f.write_char('^'),
+            TokenKind::At => f.write_char('@'),
+            TokenKind::LParen => f.write_char('('),
+            TokenKind::RParen => f.write_char(')'),
+            TokenKind::NEq => f.write_str("<>"),
+            TokenKind::LEq => f.write_str("<="),
+            TokenKind::GEq => f.write_str(">="),
+            TokenKind::Becomes => f.write_str(":="),
+            TokenKind::Ellipsis => f.write_str(".."),
+            TokenKind::Nil => f.write_str("nil"),
+            TokenKind::Ident => f.write_str("identifier"),
+            TokenKind::UIntLit => f.write_str("unsigned integer literal"),
+            TokenKind::IntLit => f.write_str("signed integer literal"),
+            TokenKind::RealLit => f.write_str("real literal"),
+            TokenKind::StrLit => f.write_str("string literal"),
+            TokenKind::Error => f.write_str("invalid token"),
+            TokenKind::Eof => f.write_str("end of file"),
         }
     }
 }
