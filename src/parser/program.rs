@@ -1,5 +1,3 @@
-use crate::lexer::{parse_unsigned_integer, TokenKind};
-
 use super::{expr::Expr, stmt::CompoundStmt, ParseResult, Parser};
 
 #[derive(Debug, Clone)]
@@ -9,30 +7,8 @@ pub struct Program<'source> {
     pub block: Block<'source>,
 }
 
-pub fn program<'source>(parser: &mut Parser<'source>) -> ParseResult<Program<'source>> {
-    parser.expect(TokenKind::Program)?;
-    let name = parser.expect_source(TokenKind::Ident)?;
-    let mut params = Vec::new();
-    if parser.at(TokenKind::LParen) {
-        parser.advance();
-        while !parser.at(TokenKind::RParen) {
-            params.push(parser.expect_source(TokenKind::Ident)?);
-            if parser.at(TokenKind::Comma) {
-                parser.advance();
-            } else {
-                break;
-            }
-        }
-        parser.expect(TokenKind::RParen)?;
-    }
-    parser.expect(TokenKind::Semicolon)?;
-    let block = block(parser)?;
-    parser.expect(TokenKind::Dot)?;
-    Ok(Program {
-        name,
-        params,
-        block,
-    })
+pub fn program<'source>(_parser: &mut Parser<'source>) -> ParseResult<Program<'source>> {
+    todo!()
 }
 
 #[derive(Debug, Clone)]
@@ -43,10 +19,6 @@ pub struct Block<'source> {
     var_decls: Vec<(Vec<&'source str>, Type<'source>)>,
     routine_decls: Vec<RoutineDecl<'source>>,
     stmts: CompoundStmt<'source>,
-}
-
-fn block<'source>(parser: &mut Parser<'source>) -> ParseResult<Block<'source>> {
-    todo!()
 }
 
 #[derive(Debug, Clone)]

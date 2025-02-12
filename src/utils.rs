@@ -47,6 +47,8 @@ pub trait Spannable {}
 
 impl<T> Spannable for T where T: Debug + Clone {}
 
+impl<T> Copy for Spanned<T> where T: Spannable + Copy {}
+
 impl<T: Spannable> Spanned<T> {
     pub fn map<U: Spannable>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
@@ -79,5 +81,25 @@ impl Display for Span {
         Debug::fmt(&self.start, f)?;
         f.write_str("..")?;
         Debug::fmt(&self.end, f)
+    }
+}
+
+pub struct DisplaySlice<'a, T: Display>(&'a [T]);
+
+impl<T: Display> Display for DisplaySlice<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            [] => Ok(()),
+            [kind] => Display::fmt(kind, f),
+            [first, mid @ .., last] => {
+                Display::fmt(first, f)?;
+                for kind in mid {
+                    f.write_str(", ")?;
+                    Display::fmt(kind, f)?;
+                }
+                f.write_str(" or ")?;
+                Display::fmt(last, f)
+            }
+        }
     }
 }

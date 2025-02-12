@@ -4,6 +4,7 @@ use crate::lexer::TokenKind;
 pub enum Expr<'source> {
     Var(Var<'source>),
     Nil,
+    UIntLit(u64),
     IntLit(i64),
     RealLit(f64),
     StrLit(&'source str),
