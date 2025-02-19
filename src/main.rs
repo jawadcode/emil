@@ -1,6 +1,6 @@
 use std::{env, fs, process};
 
-use parser::{program::program, Parser};
+use parser::{program::program, ParserState};
 
 mod lexer;
 mod parser;
@@ -16,7 +16,7 @@ fn main() {
 
     let source_content = fs::read_to_string(&source_path).unwrap();
 
-    let mut parser = Parser::new(&source_content);
+    let mut parser = ParserState::new(&source_content);
 
     match program(&mut parser) {
         Ok(program) => println!("result: {:?}", program.clone()),

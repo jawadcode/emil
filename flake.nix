@@ -24,13 +24,10 @@
     flake-utils.lib.eachDefaultSystem (system: let
       overlays = [(import rust-overlay)];
       pkgs = import nixpkgs {inherit system overlays;};
-      # inherit (pkgs) lib;
 
       craneLib =
-        (crane.mkLib pkgs)
-        .overrideToolchain
-        (pkgs.rust-bin.stable.latest.default.override
-          {extensions = ["rust-src" "rust-analyzer" "llvm-tools"];});
+        (crane.mkLib pkgs).overrideToolchain
+        (pkgs.rust-bin.stable.latest.default.override {extensions = ["rust-src" "rust-analyzer"];});
 
       commonArgs = {
         src = craneLib.cleanCargoSource ./.;
@@ -50,7 +47,7 @@
       devShells = let
         emilDevShell = craneLib.devShell {
           checks = self.checks.${system};
-          packages = [pkgs.taplo pkgs.lldb_19];
+          packages = [pkgs.taplo];
         };
       in {
         emil = emilDevShell;

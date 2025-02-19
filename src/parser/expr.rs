@@ -1,5 +1,7 @@
 use crate::lexer::TokenKind;
 
+use super::{ParseResult, ParserState};
+
 #[derive(Debug, Clone)]
 pub enum Expr<'source> {
     Var(Var<'source>),
@@ -27,6 +29,10 @@ pub enum Var<'source> {
     Ref(Box<Var<'source>>),
     Indexed(Box<Var<'source>>, Vec<Expr<'source>>),
     FieldAccess(Box<Var<'source>>, &'source str),
+}
+
+fn var<'source>(parser: &mut ParserState<'source>) -> ParseResult<Var<'source>> {
+    todo!()
 }
 
 #[derive(Debug, Clone)]
