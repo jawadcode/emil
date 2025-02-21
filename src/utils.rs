@@ -3,6 +3,10 @@ use std::{
     ops::{Add, Index, Range},
 };
 
+pub fn trim_ends(s: &str) -> &str {
+    &s[1..(s.len() - 1)]
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
     start: usize,

@@ -1,4 +1,7 @@
-use crate::lexer::{parse_int, parse_real, parse_unsigned_integer, TokenKind};
+use crate::{
+    lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
+    utils::trim_ends,
+};
 
 use super::{
     expr::{Expr, UnaryOp, Var},
@@ -165,8 +168,7 @@ fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Ordin
         TokenKind::Plus
         | TokenKind::Minus
         | TokenKind::UIntLit
-        | TokenKind::IntLit
-        | TokenKind::RealLit
+        | TokenKind::URealLit
         | TokenKind::StrLit => subrange_type(parser),
         TokenKind::LParen => {
             parser.advance();
@@ -577,14 +579,10 @@ fn index_type_spec<'source>(
     })
 }
 
-// FIXME: This does not allow a space between the sign and the literal when it comes
-// to real numbers. Don't think this is standard compliant.
-fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
-    let trim_ends = |s: &'source str| &s[1..(s.len() - 1)];
+pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
     Ok(match parser.peek() {
         TokenKind::UIntLit => Expr::UIntLit(parse_unsigned_integer(parser.advance_source())),
-        TokenKind::IntLit => Expr::IntLit(parse_int(parser.advance_source())),
-        TokenKind::RealLit => Expr::RealLit(parse_real(parser.advance_source())),
+        TokenKind::URealLit => Expr::URealLit(parse_unsigned_real(parser.advance_source())),
         TokenKind::StrLit => Expr::StrLit(trim_ends(&parser.advance_source())),
         TokenKind::Ident => Expr::Var(Var::Plain(parser.advance_source())),
         op @ TokenKind::Plus | op @ TokenKind::Minus => {
@@ -594,6 +592,7 @@ fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'so
                 TokenKind::UIntLit => {
                     Expr::UIntLit(parse_unsigned_integer(parser.advance_source()))
                 }
+                TokenKind::URealLit => Expr::URealLit(parse_unsigned_real(parser.advance_source())),
                 TokenKind::StrLit => Expr::StrLit(trim_ends(&parser.advance_source())),
                 TokenKind::Ident => Expr::Var(Var::Plain(parser.advance_source())),
                 _ => {

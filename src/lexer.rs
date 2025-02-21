@@ -119,12 +119,11 @@ pub enum TokenKind {
     // Both are just built-in constant identifiers 🙄
     // #[token("true", ignore(case))] True,
     // #[token("false", ignore(case))] False,
-    #[regex(r"([a-z][a-z0-9]*)")]                          Ident,
-    #[regex(r"[0-9]+")]                                    UIntLit,
-    #[regex(r"(\+|-)[0-9]+")]                              IntLit,
+    #[regex(r"([A-Za-z][A-Za-z0-9]*)")]                         Ident,
+    #[regex(r"[0-9]+")]                                   UIntLit,
     #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+")]
-    #[regex(r"(\+|-)?[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] RealLit,
-    #[regex(r"'([^']|'')+'")]                              StrLit,
+    #[regex(r"[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")]       URealLit,
+    #[regex(r"'([^']|'')+'")]                             StrLit,
 
     #[regex(r"\{|\(\*", comment_lexer)]
     #[regex(r"[\r\n\t\f\v ]+", logos::skip)]
@@ -143,17 +142,6 @@ pub fn parse_unsigned_integer(tok: &str) -> u64 {
     parse_uint(&mut tok.bytes())
 }
 
-pub fn parse_int(tok: &str) -> i64 {
-    let mut chars = tok.bytes().peekable();
-    let sign = chars.next_if(|c| [b'+', b'-'].contains(c));
-    let num = parse_uint(&mut chars) as i64;
-    match sign {
-        Some(b'-') => -num,
-        Some(b'+') | None => num,
-        _ => unreachable!(),
-    }
-}
-
 const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .digit_separator(NonZero::new(b'.'))
     .required_integer_digits(true)
@@ -162,7 +150,7 @@ const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .required_mantissa_sign(true)
     .build();
 
-pub fn parse_real(tok: &str) -> f64 {
+pub fn parse_unsigned_real(tok: &str) -> f64 {
     parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
         .unwrap()
 }
@@ -254,8 +242,7 @@ impl Display for TokenKind {
             TokenKind::Nil => f.write_str("nil"),
             TokenKind::Ident => f.write_str("identifier"),
             TokenKind::UIntLit => f.write_str("unsigned integer literal"),
-            TokenKind::IntLit => f.write_str("signed integer literal"),
-            TokenKind::RealLit => f.write_str("real literal"),
+            TokenKind::URealLit => f.write_str("unsigned real literal"),
             TokenKind::StrLit => f.write_str("string literal"),
             TokenKind::Error => f.write_str("invalid token"),
             TokenKind::Eof => f.write_str("end of file"),

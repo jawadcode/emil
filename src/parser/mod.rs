@@ -161,6 +161,21 @@ impl<'source> ParserState<'source> {
         Ok(items)
     }
 
+    /// Repeatedly apply an extension parser [ext] to the result of an initial parser [init].
+    fn repeat_fold<T, P, I>(&mut self, start: impl TokenPred, ext: P, init: I) -> ParseResult<T>
+    where
+        P: Fn(&mut ParserState<'source>, T) -> ParseResult<T>,
+        I: Fn(&mut ParserState<'source>) -> ParseResult<T>,
+    {
+        let mut result = init(self)?;
+
+        while start.clone().apply(self) {
+            result = ext(self, result)?;
+        }
+
+        Ok(result)
+    }
+
     /// Constructs an error that consumes the next token.
     /// For use with [`Parser::peek`] or [`Parser::is`].
     fn next_error<T>(&mut self, expected: &str) -> ParseResult<T> {

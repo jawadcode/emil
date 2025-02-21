@@ -1,4 +1,7 @@
-use crate::lexer::TokenKind;
+use crate::{
+    lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
+    utils::trim_ends,
+};
 
 use super::{ParseResult, ParserState};
 
@@ -7,11 +10,10 @@ pub enum Expr<'source> {
     Var(Var<'source>),
     Nil,
     UIntLit(u64),
-    IntLit(i64),
-    RealLit(f64),
+    URealLit(f64),
     StrLit(&'source str),
     Set(Vec<Expr<'source>>),
-    FuncCall(&'source str, Vec<Expr<'source>>),
+    FuncCall(&'source str, Box<Params<'source>>),
     UnaryOp {
         op: UnaryOp,
         operand: Box<Expr<'source>>,
@@ -23,6 +25,116 @@ pub enum Expr<'source> {
     },
 }
 
+pub fn expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+    parser.repeat_fold(
+        &[
+            TokenKind::Eq,
+            TokenKind::NEq,
+            TokenKind::LT,
+            TokenKind::GT,
+            TokenKind::LEq,
+            TokenKind::GEq,
+            TokenKind::In,
+        ],
+        |parser, left| {
+            let left = Box::new(left);
+            let op = parser.advance().node.into();
+            let right = simple_expr(parser).map(Box::new)?;
+            Ok(Expr::BinOp { op, left, right })
+        },
+        simple_expr,
+    )
+}
+
+fn simple_expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+    let sign = match parser.peek() {
+        TokenKind::Plus | TokenKind::Minus => Some(parser.advance().node.into()),
+        _ => None,
+    };
+    parser.repeat_fold(
+        &[TokenKind::Plus, TokenKind::Minus, TokenKind::Or],
+        |parser, left| {
+            let left = Box::new(left);
+            let op = parser.advance().node.into();
+            let right = term(parser).map(Box::new)?;
+            let binop = Expr::BinOp { op, left, right };
+            match sign {
+                Some(op) => Ok(Expr::UnaryOp {
+                    op,
+                    operand: Box::new(binop),
+                }),
+                None => Ok(binop),
+            }
+        },
+        term,
+    )
+}
+
+fn term<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+    parser.repeat_fold(
+        &[
+            TokenKind::Asterisk,
+            TokenKind::Slash,
+            TokenKind::Div,
+            TokenKind::Mod,
+            TokenKind::And,
+        ],
+        |parser, left| {
+            let left = Box::new(left);
+            let op = parser.advance().node.into();
+            let right = factor(parser).map(Box::new)?;
+            Ok(Expr::BinOp { op, left, right })
+        },
+        factor,
+    )
+}
+
+fn factor<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+    match parser.peek() {
+        TokenKind::UIntLit => Ok(Expr::UIntLit(parse_unsigned_integer(
+            parser.advance_source(),
+        ))),
+        TokenKind::URealLit => Ok(Expr::URealLit(parse_unsigned_real(parser.advance_source()))),
+        TokenKind::StrLit => Ok(Expr::StrLit(trim_ends(parser.advance_source()))),
+        TokenKind::Nil => Ok(Expr::Nil),
+        TokenKind::Ident => factor_ident(parser),
+        TokenKind::LSquare => {
+            parser.advance();
+            let elems = parser.repeat_sep(TokenKind::Comma, expr)?;
+            parser.expect(TokenKind::RSquare)?;
+            Ok(Expr::Set(elems))
+        }
+        TokenKind::Not => {
+            parser.advance();
+            Ok(Expr::UnaryOp {
+                op: UnaryOp::Not,
+                operand: factor(parser).map(Box::new)?,
+            })
+        }
+        TokenKind::LParen => {
+            parser.advance();
+            let expr = expr(parser)?;
+            parser.expect(TokenKind::RParen)?;
+            Ok(expr)
+        }
+        _ => parser.next_error("factor"),
+    }
+}
+
+fn factor_ident<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+    let ident = parser.advance_source();
+    if parser.is(VAR_EXT_START) {
+        parser
+            .repeat_fold(VAR_EXT_START, var_ext, |_| Ok(Var::Plain(ident)))
+            .map(Expr::Var)
+    } else if parser.is(TokenKind::LParen) {
+        let params = params(parser)?;
+        Ok(Expr::FuncCall(ident, Box::new(params)))
+    } else {
+        parser.next_error("'^', '↑', '[', '.' or '('")
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Var<'source> {
     Plain(&'source str),
@@ -31,11 +143,71 @@ pub enum Var<'source> {
     FieldAccess(Box<Var<'source>>, &'source str),
 }
 
-fn var<'source>(parser: &mut ParserState<'source>) -> ParseResult<Var<'source>> {
-    todo!()
+pub(super) const VAR_EXT_START: &[TokenKind] = &[
+    TokenKind::Caret,
+    TokenKind::UpArrow,
+    TokenKind::LSquare,
+    TokenKind::Dot,
+];
+
+pub(super) fn var<'source>(parser: &mut ParserState<'source>) -> ParseResult<Var<'source>> {
+    parser.repeat_fold(VAR_EXT_START, var_ext, |parser| {
+        Ok(Var::Plain(parser.advance_source()))
+    })
+}
+
+pub(super) fn var_ext<'source>(
+    parser: &mut ParserState<'source>,
+    var: Var<'source>,
+) -> ParseResult<Var<'source>> {
+    match parser.peek() {
+        TokenKind::Caret | TokenKind::UpArrow => {
+            parser.advance();
+            Ok(Var::Ref(Box::new(var)))
+        }
+        TokenKind::LSquare => {
+            parser.advance();
+            let indices = parser.repeat_sep(TokenKind::Comma, expr)?;
+            parser.expect(TokenKind::RSquare)?;
+            Ok(Var::Indexed(Box::new(var), indices))
+        }
+        TokenKind::Dot => {
+            parser.advance();
+            let field = parser.expect_source(TokenKind::Ident)?;
+            Ok(Var::FieldAccess(Box::new(var), field))
+        }
+        _ => parser.next_error("'^', '↑', '[' or '.'"),
+    }
 }
 
 #[derive(Debug, Clone)]
+pub enum Params<'source> {
+    Actual(Vec<Expr<'source>>),
+    Write(InitWriteParam<'source>, Vec<WriteParam<'source>>),
+}
+
+#[derive(Debug, Clone)]
+pub enum InitWriteParam<'source> {
+    FileVar(Var<'source>),
+    WriteParam(WriteParam<'source>),
+}
+
+#[derive(Debug, Clone)]
+pub struct WriteParam<'source> {
+    expr: Expr<'source>,
+    field_widths: Option<(Expr<'source>, Option<Expr<'source>>)>,
+}
+
+pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Params<'source>> {
+    parser.advance();
+    let params = parser
+        .repeat_sep(TokenKind::Comma, expr)
+        .map(Params::Actual)?;
+    parser.expect(TokenKind::RParen)?;
+    Ok(params)
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
     Not,
     Identity,
@@ -53,7 +225,7 @@ impl From<TokenKind> for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     Mult,
     Div,
