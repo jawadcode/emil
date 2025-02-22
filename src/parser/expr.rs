@@ -96,7 +96,10 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'sourc
         ))),
         TokenKind::URealLit => Ok(Expr::URealLit(parse_unsigned_real(parser.advance_source()))),
         TokenKind::StrLit => Ok(Expr::StrLit(trim_ends(parser.advance_source()))),
-        TokenKind::Nil => Ok(Expr::Nil),
+        TokenKind::Nil => {
+            parser.advance();
+            Ok(Expr::Nil)
+        }
         TokenKind::Ident => factor_ident(parser),
         TokenKind::LSquare => {
             parser.advance();
@@ -131,7 +134,7 @@ fn factor_ident<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<
         let params = params(parser)?;
         Ok(Expr::FuncCall(ident, Box::new(params)))
     } else {
-        parser.next_error("'^', '↑', '[', '.' or '('")
+        Ok(Expr::Var(Var::Plain(ident)))
     }
 }
 
@@ -198,6 +201,7 @@ pub struct WriteParam<'source> {
     field_widths: Option<(Expr<'source>, Option<Expr<'source>>)>,
 }
 
+// TODO: Implement write parameters
 pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Params<'source>> {
     parser.advance();
     let params = parser
@@ -228,6 +232,7 @@ impl From<TokenKind> for UnaryOp {
 #[derive(Debug, Clone, Copy)]
 pub enum BinOp {
     Mult,
+    Quot,
     Div,
     Mod,
     And,
@@ -249,7 +254,8 @@ impl From<TokenKind> for BinOp {
     fn from(value: TokenKind) -> Self {
         match value {
             TokenKind::Asterisk => Self::Mult,
-            TokenKind::Slash => Self::Div,
+            TokenKind::Slash => Self::Quot,
+            TokenKind::Div => Self::Div,
             TokenKind::Mod => Self::Mod,
             TokenKind::And => Self::And,
             TokenKind::Plus => Self::Add,

@@ -115,15 +115,15 @@ pub enum TokenKind {
     #[token("..")] Ellipsis,
 
     /* LITERALS */
-    #[token("nil", ignore(case))]                          Nil,
+    #[token("nil", ignore(case))]                   Nil,
     // Both are just built-in constant identifiers 🙄
     // #[token("true", ignore(case))] True,
     // #[token("false", ignore(case))] False,
-    #[regex(r"([A-Za-z][A-Za-z0-9]*)")]                         Ident,
-    #[regex(r"[0-9]+")]                                   UIntLit,
+    #[regex(r"([A-Za-z][A-Za-z0-9]*)")]             Ident,
+    #[regex(r"[0-9]+")]                             UIntLit,
     #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+")]
-    #[regex(r"[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")]       URealLit,
-    #[regex(r"'([^']|'')+'")]                             StrLit,
+    #[regex(r"[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] URealLit,
+    #[regex(r"'([^']|'')+'")]                       StrLit,
 
     #[regex(r"\{|\(\*", comment_lexer)]
     #[regex(r"[\r\n\t\f\v ]+", logos::skip)]

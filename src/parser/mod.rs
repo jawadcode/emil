@@ -20,7 +20,7 @@ trait TokenPred: Clone {
 
 impl TokenPred for TokenKind {
     fn apply(self, parser: &mut ParserState) -> bool {
-        parser.is(self)
+        parser.peek() == self
     }
 }
 
@@ -153,7 +153,7 @@ impl<'source> ParserState<'source> {
         let mut items = Vec::new();
         items.push(parser(self)?);
 
-        while separator.clone().apply(self) {
+        while self.is(separator.clone()) {
             self.advance();
             items.push(parser(self)?);
         }
@@ -169,7 +169,7 @@ impl<'source> ParserState<'source> {
     {
         let mut result = init(self)?;
 
-        while start.clone().apply(self) {
+        while self.is(start.clone()) {
             result = ext(self, result)?;
         }
 

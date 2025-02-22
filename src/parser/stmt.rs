@@ -123,6 +123,11 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> ParseResul
     } else if peeked == TokenKind::LParen {
         let params = params(parser)?;
         Ok(Stmt::ProcCall { name, params })
+    } else if peeked == TokenKind::Semicolon {
+        Ok(Stmt::ProcCall {
+            name,
+            params: Params::Actual(Vec::new()),
+        })
     } else {
         parser.next_error("'^', '↑', '[', '.', ':=' or '('")
     }

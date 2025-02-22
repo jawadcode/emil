@@ -1,3 +1,5 @@
+use std::io::{stdout, Write};
+
 use crate::{
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
     utils::trim_ends,
@@ -19,15 +21,14 @@ pub struct Program<'source> {
 pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Program<'source>> {
     parser.expect(TokenKind::Program)?;
     let name = parser.expect_source(TokenKind::Ident)?;
-
     let params = if parser.is(TokenKind::LParen) {
+        parser.advance();
         let idents = ident_list(parser)?;
         parser.expect(TokenKind::RParen)?;
         idents
     } else {
         Vec::new()
     };
-
     parser.expect(TokenKind::Semicolon)?;
     let block = block(parser)?;
     parser.expect(TokenKind::Dot)?;
@@ -51,6 +52,7 @@ pub struct Block<'source> {
 
 fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'source>> {
     let label_decls = if parser.is(TokenKind::Label) {
+        parser.advance();
         let res = parser.repeat_sep(TokenKind::Comma, |parser| {
             parser
                 .expect_source(TokenKind::UIntLit)
@@ -63,6 +65,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'sourc
     };
 
     let const_defs = if parser.is(TokenKind::Const) {
+        parser.advance();
         parser.repeated(TokenKind::Ident, |parser| {
             let name = parser.advance_source();
             parser.expect(TokenKind::Eq)?;
@@ -75,6 +78,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'sourc
     };
 
     let type_defs = if parser.is(TokenKind::Type) {
+        parser.advance();
         parser.repeated(TokenKind::Ident, |parser| {
             let name = parser.advance_source();
             parser.expect(TokenKind::Eq)?;
@@ -87,6 +91,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'sourc
     };
 
     let var_decls = if parser.is(TokenKind::Var) {
+        parser.advance();
         parser.repeated(TokenKind::Ident, |parser| {
             let names = ident_list(parser)?;
             parser.expect(TokenKind::Colon)?;
@@ -124,6 +129,9 @@ pub enum Type<'source> {
 
 fn r#type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Type<'source>> {
     match parser.peek() {
+        TokenKind::Ident => Ok(Type::Ordinal(OrdinalType::Identifier(
+            parser.advance_source(),
+        ))),
         TokenKind::Packed => {
             parser.advance();
             unpacked_structured_type(parser).map(|ty| Type::Structured {
@@ -142,7 +150,7 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Type<'sourc
             let ty = parser.expect_source(TokenKind::Ident)?;
             Ok(Type::Pointer(ty))
         }
-        _ => parser.next_error("ordinal type"),
+        _ => parser.next_error("type"),
     }
 }
 
@@ -159,10 +167,16 @@ pub enum OrdinalType<'source> {
 fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<OrdinalType<'source>> {
     match parser.peek() {
         TokenKind::Ident => {
+            let ident = parser.advance_source();
             if parser.is(TokenKind::Ellipsis) {
-                subrange_type(parser)
+                parser.advance();
+                let upper = constexpr(parser)?;
+                Ok(OrdinalType::Subrange {
+                    lower: Expr::Var(Var::Plain(ident)),
+                    upper,
+                })
             } else {
-                Ok(OrdinalType::Identifier(parser.advance_source()))
+                Ok(OrdinalType::Identifier(ident))
             }
         }
         TokenKind::Plus
@@ -182,7 +196,7 @@ fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Ordin
 
 fn subrange_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<OrdinalType<'source>> {
     let lower = constexpr(parser)?;
-    parser.advance();
+    parser.expect(TokenKind::Ellipsis)?;
     let upper = constexpr(parser)?;
     Ok(OrdinalType::Subrange { lower, upper })
 }
