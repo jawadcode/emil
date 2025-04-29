@@ -126,7 +126,7 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> ParseResul
     } else if peeked == TokenKind::Semicolon {
         Ok(Stmt::ProcCall {
             name,
-            params: Params::Actual(Vec::new()),
+            params: Params::MaybeActual(Vec::new()),
         })
     } else {
         parser.next_error("'^', '↑', '[', '.', ':=' or '('")
