@@ -183,34 +183,11 @@ pub(super) fn var_ext<'source>(
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Params<'source> {
-    // It feels icky to be treating `Write` and `Writeln` differently in the
-    // parser, and since <write-param-list> overlaps with <actual-param-list>,
-    // our `Params::Actual` may actually be a `Params::Write`, hence the name.
-    MaybeActual(Vec<Expr<'source>>),
-    Write(InitWriteParam<'source>, Vec<WriteParam<'source>>),
-}
+pub type Params<'source> = Vec<Expr<'source>>;
 
-#[derive(Debug, Clone)]
-pub enum InitWriteParam<'source> {
-    FileVar(Var<'source>),
-    WriteParam(WriteParam<'source>),
-}
-
-#[derive(Debug, Clone)]
-pub struct WriteParam<'source> {
-    expr: Expr<'source>,
-    field_widths: Option<(Expr<'source>, Option<Expr<'source>>)>,
-}
-
-// TODO: Implement write parameters by branching on the existence of a colon at
-// the end of the first and second parameters
 pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Params<'source>> {
     parser.advance();
-    let params = parser
-        .repeat_sep(TokenKind::Comma, expr)
-        .map(Params::MaybeActual)?;
+    let params = parser.repeat_sep(TokenKind::Comma, expr)?;
     parser.expect(TokenKind::RParen)?;
     Ok(params)
 }

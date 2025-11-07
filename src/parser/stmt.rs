@@ -54,6 +54,14 @@ pub enum Stmt<'source> {
         var: Var<'source>,
         value: Expr<'source>,
     },
+    // One or more
+    ReadCall(Vec<Var<'source>>),
+    // Zero or more
+    ReadlnCall(Vec<Var<'source>>),
+    // One or more
+    WriteCall(Vec<WriteParam<'source>>),
+    // Zero or more
+    WritelnCall(Vec<WriteParam<'source>>),
     ProcCall {
         name: &'source str,
         params: Params<'source>,
@@ -106,10 +114,24 @@ fn stmt<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>
     }
 }
 
-// TODO: Implement write (and read??) parameters
+#[derive(Debug, Clone)]
+pub struct WriteParam<'source> {
+    param: Expr<'source>,
+    specifiers: Option<(
+        /* field width */ Expr<'source>,
+        Option</* fractional digits */ Expr<'source>>,
+    )>,
+}
+
 fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>> {
     let name = parser.advance_source();
     let peeked = parser.peek();
+    match name.to_lowercase().as_str() {
+        "writeln" if peeked != TokenKind::LParen => return Ok(Stmt::WritelnCall(Vec::new())),
+        "readln" if peeked != TokenKind::LParen => return Ok(Stmt::ReadlnCall(Vec::new())),
+        _ => (),
+    }
+
     if VAR_EXT_START.contains(&peeked) {
         let var = parser.repeat_fold(VAR_EXT_START, var_ext, |_| Ok(Var::Plain(name)))?;
         parser.expect(TokenKind::Becomes)?;
@@ -121,16 +143,51 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> ParseResul
         let value = expr(parser)?;
         Ok(Stmt::Assign { var, value })
     } else if peeked == TokenKind::LParen {
-        let params = params(parser)?;
-        Ok(Stmt::ProcCall { name, params })
+        let stmt = match name.to_lowercase().as_str() {
+            // We assume there must be at least one argument for writeln/readln as we're inside parens
+            "write" => write_params(parser).map(Stmt::WriteCall),
+            "writeln" => write_params(parser).map(Stmt::WritelnCall),
+            "read" => read_params(parser).map(Stmt::ReadCall),
+            "readln" => read_params(parser).map(Stmt::ReadlnCall),
+            _ => params(parser).map(|params| Stmt::ProcCall { name, params }),
+        }?;
+        parser.expect(TokenKind::RParen)?;
+        Ok(stmt)
     } else if peeked == TokenKind::Semicolon {
         Ok(Stmt::ProcCall {
             name,
-            params: Params::MaybeActual(Vec::new()),
+            params: Vec::new(),
         })
     } else {
         parser.next_error("'^', '↑', '[', '.', ':=' or '('")
     }
+}
+
+fn write_params<'source>(
+    parser: &mut ParserState<'source>,
+) -> ParseResult<Vec<WriteParam<'source>>> {
+    parser.repeat_sep(TokenKind::Comma, |parser: &mut ParserState<'source>| {
+        let param = expr(parser)?;
+        let specifiers = if parser.is(TokenKind::Colon) {
+            parser.advance();
+            Some((
+                expr(parser)?,
+                if parser.is(TokenKind::Colon) {
+                    parser.advance();
+                    Some(expr(parser)?)
+                } else {
+                    None
+                },
+            ))
+        } else {
+            None
+        };
+        Ok(WriteParam { param, specifiers })
+    })
+}
+
+fn read_params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Var<'source>>> {
+    parser.repeat_sep(TokenKind::Comma, var)
 }
 
 fn goto<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>> {

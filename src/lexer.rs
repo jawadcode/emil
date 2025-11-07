@@ -148,7 +148,7 @@ const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .required_fraction_digits(true)
     .required_mantissa_digits(true)
     .required_mantissa_sign(true)
-    .build();
+    .build_strict();
 
 pub fn parse_unsigned_real(tok: &str) -> f64 {
     parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())

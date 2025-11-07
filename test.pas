@@ -8,8 +8,8 @@ var
    Counter : integer;
    
 function CentralElementEqualsFour(matrix : array [rowsStart..rowsEnd: integer] of array [columnsStart..columnsEnd: integer] of integer): boolean; begin
-   Idk := matrix[(rowsStart + rowsEnd) div 2,
-                 (columnsStart + columnsEnd) div 2] = 4
+   CentralElementEqualsFour := matrix[(rowsStart + rowsEnd) div 2,
+                                      (columnsStart + columnsEnd) div 2] = 4
 end;
 
 procedure Goodbye; begin

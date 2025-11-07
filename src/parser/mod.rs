@@ -128,7 +128,7 @@ impl<'source> ParserState<'source> {
 
     /// Parses 0 or more of [parser], repeating on the apperance of the token [on].
     ///
-    /// # Notes
+    /// # TODO
     ///
     /// Ideally the [parser] would return [`ControlFlow`] so we can allow it to break out of the
     /// loop early.

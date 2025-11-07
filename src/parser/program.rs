@@ -1,5 +1,3 @@
-use std::io::{stdout, Write};
-
 use crate::{
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
     utils::trim_ends,
