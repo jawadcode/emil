@@ -1,20 +1,17 @@
 use crate::{
+    ast::{
+        expr::{Expr, UnaryOp, Var},
+        program::{
+            ArraySchema, Block, FieldList, FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param,
+            ParamType, PostSig, ProcDecl, ProcSig, Program, RoutineDecl, Type,
+            UnpackedStructuredType, Variant, VariantField,
+        },
+    },
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
     utils::trim_ends,
 };
 
-use super::{
-    expr::{Expr, UnaryOp, Var},
-    stmt::{compound_stmt, CompoundStmt},
-    ParseResult, ParserState,
-};
-
-#[derive(Debug, Clone)]
-pub struct Program<'source> {
-    pub name: &'source str,
-    pub params: Vec<&'source str>,
-    pub block: Block<'source>,
-}
+use super::{stmt::compound_stmt, ParseResult, ParserState};
 
 pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Program<'source>> {
     parser.expect(TokenKind::Program)?;
@@ -36,16 +33,6 @@ pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Progra
         params,
         block,
     })
-}
-
-#[derive(Debug, Clone)]
-pub struct Block<'source> {
-    label_decls: Vec<u64>,
-    const_defs: Vec<(&'source str, Expr<'source>)>,
-    type_defs: Vec<(&'source str, Type<'source>)>,
-    var_decls: Vec<(Vec<&'source str>, Type<'source>)>,
-    routine_decls: Vec<RoutineDecl<'source>>,
-    stmts: CompoundStmt<'source>,
 }
 
 fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'source>> {
@@ -115,16 +102,6 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'sourc
     })
 }
 
-#[derive(Debug, Clone)]
-pub enum Type<'source> {
-    Ordinal(OrdinalType<'source>),
-    Structured {
-        packed: bool,
-        r#type: Box<UnpackedStructuredType<'source>>,
-    },
-    Pointer(&'source str),
-}
-
 fn r#type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Type<'source>> {
     match parser.peek() {
         TokenKind::Ident => Ok(Type::Ordinal(OrdinalType::Identifier(
@@ -150,16 +127,6 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Type<'sourc
         }
         _ => parser.next_error("type"),
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum OrdinalType<'source> {
-    Enumerated(Vec<&'source str>),
-    Subrange {
-        lower: Expr<'source>,
-        upper: Expr<'source>,
-    },
-    Identifier(&'source str),
 }
 
 fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<OrdinalType<'source>> {
@@ -199,17 +166,6 @@ fn subrange_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Ordi
     Ok(OrdinalType::Subrange { lower, upper })
 }
 
-#[derive(Clone, Debug)]
-pub enum UnpackedStructuredType<'source> {
-    Array {
-        indices: Vec<OrdinalType<'source>>,
-        elem: Type<'source>,
-    },
-    Record(FieldList<'source>),
-    Set(OrdinalType<'source>),
-    File(Type<'source>),
-}
-
 fn unpacked_structured_type<'source>(
     parser: &mut ParserState<'source>,
 ) -> ParseResult<UnpackedStructuredType<'source>> {
@@ -245,16 +201,6 @@ fn unpacked_structured_type<'source>(
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum FieldList<'source> {
-    FixedOnly(FixedPart<'source>),
-    Both(FixedPart<'source>, VariantField<'source>),
-    VariantOnly(VariantField<'source>),
-    Empty,
-}
-
-type FixedPart<'source> = Vec<(Vec<&'source str>, Type<'source>)>;
-
 fn field_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<FieldList<'source>> {
     let body = match parser.peek() {
         TokenKind::Ident => {
@@ -287,19 +233,6 @@ fn field_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<FieldLi
     Ok(body)
 }
 
-#[derive(Clone, Debug)]
-pub struct VariantField<'source> {
-    tag_field: Option<&'source str>,
-    tag_type: &'source str,
-    variants: Vec<Variant<'source>>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Variant<'source> {
-    case_labels: Vec<Expr<'source>>,
-    fields: FieldList<'source>,
-}
-
 fn variant_field<'source>(parser: &mut ParserState<'source>) -> ParseResult<VariantField<'source>> {
     parser.advance();
     let tag_field = if parser.is(TokenKind::Ident) {
@@ -327,12 +260,6 @@ fn variant_field<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vari
     })
 }
 
-#[derive(Clone, Debug)]
-pub enum RoutineDecl<'source> {
-    Proc(ProcDecl<'source>),
-    Func(FuncDecl<'source>),
-}
-
 fn routine_decls<'source>(
     parser: &mut ParserState<'source>,
 ) -> ParseResult<Vec<RoutineDecl<'source>>> {
@@ -347,32 +274,12 @@ fn routine_decls<'source>(
     })
 }
 
-#[derive(Debug, Clone)]
-pub enum PostSig<'source> {
-    Block(Block<'source>),
-    Directive(Directive<'source>),
-}
-
 fn post_sig<'source>(parser: &mut ParserState<'source>) -> ParseResult<PostSig<'source>> {
     match parser.peek() {
         TokenKind::Ident => Ok(PostSig::Directive(parser.advance_source().into())),
         TokenKind::Begin => block(parser).map(PostSig::Block),
         _ => parser.next_error("'begin' or directive"),
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ProcDecl<'source> {
-    sig: ProcSig<'source>,
-    post: PostSig<'source>,
-}
-
-#[derive(Clone, Debug)]
-pub struct ProcSig<'source> {
-    name: &'source str,
-    /// params.is_empty() => procedure identification
-    /// otherwise         => procedure heading
-    params: Vec<Param<'source>>,
 }
 
 fn proc_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<ProcDecl<'source>> {
@@ -389,19 +296,6 @@ fn proc_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<ProcDecl
         sig: ProcSig { name, params },
         post,
     })
-}
-
-#[derive(Debug, Clone)]
-pub enum FuncDecl<'source> {
-    Ident(&'source str, Block<'source>),
-    Heading(FuncSig<'source>, PostSig<'source>),
-}
-
-#[derive(Debug, Clone)]
-pub struct FuncSig<'source> {
-    name: &'source str,
-    params: Vec<Param<'source>>,
-    result: &'source str,
 }
 
 fn func_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<FuncDecl<'source>> {
@@ -436,31 +330,6 @@ fn func_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<FuncDecl
         TokenKind::Semicolon => parser.next_error("':'"),
         _ => parser.next_error("colon or semicolon"),
     }
-}
-
-#[derive(Debug, Clone)]
-pub enum Directive<'source> {
-    Forward,
-    External,
-    Unknown(&'source str),
-}
-
-impl<'source> From<&'source str> for Directive<'source> {
-    fn from(other: &'source str) -> Self {
-        match other.to_lowercase().as_str() {
-            "forward" => Self::Forward,
-            "external" => Self::External,
-            _ => Self::Unknown(other),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum Param<'source> {
-    Value(Vec<&'source str>, ParamType<'source>),
-    Var(Vec<&'source str>, ParamType<'source>),
-    Proc(ProcSig<'source>),
-    Func(FuncSig<'source>),
 }
 
 fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Param<'source>>> {
@@ -512,24 +381,6 @@ fn param<'source>(parser: &mut ParserState<'source>) -> ParseResult<Param<'sourc
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum ParamType<'source> {
-    TypeIdent(&'source str),
-    ArraySchema(Box<ArraySchema<'source>>),
-}
-
-#[derive(Clone, Debug)]
-pub enum ArraySchema<'source> {
-    Packed {
-        index: IndexTypeSpec<'source>,
-        elem: &'source str,
-    },
-    Unpacked {
-        indices: Vec<IndexTypeSpec<'source>>,
-        elem: ParamType<'source>,
-    },
-}
-
 fn param_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<ParamType<'source>> {
     match parser.peek() {
         TokenKind::Ident => Ok(ParamType::TypeIdent(parser.advance_source())),
@@ -568,13 +419,6 @@ fn param_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<ParamTy
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct IndexTypeSpec<'source> {
-    lower: &'source str,
-    upper: &'source str,
-    r#type: &'source str,
-}
-
 fn index_type_spec<'source>(
     parser: &mut ParserState<'source>,
 ) -> ParseResult<IndexTypeSpec<'source>> {
@@ -588,6 +432,12 @@ fn index_type_spec<'source>(
         lower,
         upper,
         r#type,
+    })
+}
+
+fn ident_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<&'source str>> {
+    parser.repeat_sep(TokenKind::Comma, |parser| {
+        parser.expect_source(TokenKind::Ident)
     })
 }
 
@@ -615,11 +465,5 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResu
             Expr::UnaryOp { op, operand }
         }
         _ => return parser.next_error("numeric literal, string literal, identifier, '+' or '-'"),
-    })
-}
-
-fn ident_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<&'source str>> {
-    parser.repeat_sep(TokenKind::Comma, |parser| {
-        parser.expect_source(TokenKind::Ident)
     })
 }

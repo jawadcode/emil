@@ -1,15 +1,17 @@
 use crate::{
+    ast::{
+        expr::Var,
+        stmt::{Case, CompoundStmt, ForDirection, MaybeLabelledStmt, Stmt, WriteParam},
+    },
     lexer::{parse_unsigned_integer, TokenKind},
     parser::expr::VAR_EXT_START,
 };
 
 use super::{
-    expr::{expr, params, var, var_ext, Expr, Params, Var},
+    expr::{expr, params, var, var_ext},
     program::constexpr,
     ParseResult, ParserState,
 };
-
-pub type CompoundStmt<'source> = Vec<MaybeLabelledStmt<'source>>;
 
 pub fn compound_stmt<'source>(
     parser: &mut ParserState<'source>,
@@ -24,12 +26,6 @@ fn stmt_seq<'source>(
     parser: &mut ParserState<'source>,
 ) -> ParseResult<Vec<MaybeLabelledStmt<'source>>> {
     parser.repeat_sep(TokenKind::Semicolon, maybe_labelled_stmt)
-}
-
-#[derive(Debug, Clone)]
-pub struct MaybeLabelledStmt<'source> {
-    label: Option<u64>,
-    stmt: Box<Stmt<'source>>,
 }
 
 fn maybe_labelled_stmt<'source>(
@@ -47,57 +43,6 @@ fn maybe_labelled_stmt<'source>(
     Ok(MaybeLabelledStmt { label, stmt })
 }
 
-#[derive(Debug, Clone)]
-pub enum Stmt<'source> {
-    Empty,
-    Assign {
-        var: Var<'source>,
-        value: Expr<'source>,
-    },
-    // One or more
-    ReadCall(Vec<Var<'source>>),
-    // Zero or more
-    ReadlnCall(Vec<Var<'source>>),
-    // One or more
-    WriteCall(Vec<WriteParam<'source>>),
-    // Zero or more
-    WritelnCall(Vec<WriteParam<'source>>),
-    ProcCall {
-        name: &'source str,
-        params: Params<'source>,
-    },
-    Goto(u64),
-    Compound(CompoundStmt<'source>),
-    If {
-        cond: Expr<'source>,
-        then: MaybeLabelledStmt<'source>,
-        r#else: Option<MaybeLabelledStmt<'source>>,
-    },
-    Case {
-        index: Expr<'source>,
-        cases: Vec<Case<'source>>,
-    },
-    While {
-        cond: Expr<'source>,
-        body: MaybeLabelledStmt<'source>,
-    },
-    Repeat {
-        body: Vec<MaybeLabelledStmt<'source>>,
-        cond: Expr<'source>,
-    },
-    For {
-        control_var: &'source str,
-        from: Expr<'source>,
-        direction: ForDirection,
-        to: Expr<'source>,
-        body: MaybeLabelledStmt<'source>,
-    },
-    With {
-        vars: Vec<Var<'source>>,
-        body: MaybeLabelledStmt<'source>,
-    },
-}
-
 fn stmt<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>> {
     match parser.peek() {
         TokenKind::Ident => assign_or_proc_call(parser),
@@ -112,15 +57,6 @@ fn stmt<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>
         TokenKind::Semicolon | TokenKind::End | TokenKind::Until => Ok(Stmt::Empty),
         _ => parser.next_error("'label' or statement"),
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct WriteParam<'source> {
-    param: Expr<'source>,
-    specifiers: Option<(
-        /* field width */ Expr<'source>,
-        Option</* fractional digits */ Expr<'source>>,
-    )>,
 }
 
 fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>> {
@@ -274,16 +210,4 @@ fn with<'source>(parser: &mut ParserState<'source>) -> ParseResult<Stmt<'source>
     parser.expect(TokenKind::Do)?;
     let body = maybe_labelled_stmt(parser)?;
     Ok(Stmt::With { vars, body })
-}
-
-#[derive(Debug, Clone)]
-pub enum ForDirection {
-    To,
-    DownTo,
-}
-
-#[derive(Debug, Clone)]
-pub struct Case<'source> {
-    labels: Vec<Expr<'source>>,
-    body: MaybeLabelledStmt<'source>,
 }

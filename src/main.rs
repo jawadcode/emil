@@ -3,7 +3,9 @@ use std::{env, fs, process};
 use parser::{program::program, ParserState};
 
 mod lexer;
+mod ast;
 mod parser;
+mod semantic_analysis;
 mod utils;
 
 fn main() {
