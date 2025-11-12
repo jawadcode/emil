@@ -79,6 +79,7 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> ParseResul
         let value = expr(parser)?;
         Ok(Stmt::Assign { var, value })
     } else if peeked == TokenKind::LParen {
+        parser.advance();
         let stmt = match name.to_lowercase().as_str() {
             // We assume there must be at least one argument for writeln/readln as we're inside parens
             "write" => write_params(parser).map(Stmt::WriteCall),

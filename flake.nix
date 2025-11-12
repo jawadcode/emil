@@ -2,15 +2,13 @@
   description = "A pascal compiler, named after the legend Niklaus Emil Wirth";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    crane = {
-      url = "github:ipetkov/crane";
-    };
+    crane.url = "github:ipetkov/crane";
   };
 
   outputs = {
@@ -50,7 +48,7 @@
       devShells = let
         emilDevShell = craneLib.devShell {
           checks = self.checks.${system};
-          packages = [pkgs.taplo pkgs.lldb_19];
+          packages = with pkgs; [taplo lldb_19];
         };
       in {
         emil = emilDevShell;
