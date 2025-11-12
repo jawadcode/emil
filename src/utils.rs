@@ -27,8 +27,8 @@ impl Add for Span {
 
     fn add(self, rhs: Self) -> Self::Output {
         Self {
-            start: self.start,
-            end: rhs.end,
+            start: self.start.min(rhs.start),
+            end: rhs.end.max(rhs.end),
         }
     }
 }
@@ -40,6 +40,8 @@ impl Index<Span> for str {
         &self[index.start..index.end]
     }
 }
+
+/* A little bit of fun */
 
 #[derive(Debug, Clone)]
 pub struct Spanned<T: Spannable> {
@@ -61,7 +63,7 @@ impl<T: Spannable> Spanned<T> {
         }
     }
 
-    /// Totally not `liftA2`
+    /// Totally not just `liftA2`
     pub fn merge<U: Spannable, V: Spannable>(
         self,
         other: Spanned<U>,
