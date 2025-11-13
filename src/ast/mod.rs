@@ -1,3 +1,9 @@
+use lasso::Spur;
+
+use crate::utils::Spanned;
+
+pub mod expr;
 pub mod program;
 pub mod stmt;
-pub mod expr;
+
+pub type Ident = Spanned<Spur>;

@@ -1,161 +1,172 @@
-use crate::ast::{expr::Expr, stmt::CompoundStmt};
+use crate::{
+    ast::{expr::Expr, stmt::CompoundStmt, Ident},
+    utils::Spanned,
+};
 
 #[derive(Debug, Clone)]
-pub struct Program<'source> {
-    pub name: &'source str,
-    pub params: Vec<&'source str>,
-    pub block: Block<'source>,
+pub struct Program {
+    pub name: Ident,
+    pub params: Spanned<Vec<Ident>>,
+    pub block: Spanned<Block>,
 }
 
 #[derive(Debug, Clone)]
-pub struct Block<'source> {
-    pub label_decls: Vec<u64>,
-    pub const_defs: Vec<(&'source str, Expr<'source>)>,
-    pub type_defs: Vec<(&'source str, Type<'source>)>,
-    pub var_decls: Vec<(Vec<&'source str>, Type<'source>)>,
-    pub routine_decls: Vec<RoutineDecl<'source>>,
-    pub stmts: CompoundStmt<'source>,
+pub struct Block {
+    pub label_decls: Spanned<Vec<Spanned<u64>>>,
+    pub const_defs: Spanned<Vec<ConstDef>>,
+    pub type_defs: Spanned<Vec<TypeDef>>,
+    pub var_decls: Spanned<Vec<VarDecl>>,
+    pub routine_decls: Spanned<Vec<Spanned<RoutineDecl>>>,
+    pub stmts: Spanned<CompoundStmt>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Type<'source> {
-    Ordinal(OrdinalType<'source>),
+pub struct ConstDef {
+    name: Ident,
+    value: Expr,
+}
+
+#[derive(Debug, Clone)]
+pub struct TypeDef {
+    name: Ident,
+    def: Spanned<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VarDecl {
+    names: Vec<Ident>,
+    r#type: Spanned<Type>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Type {
+    Ordinal(OrdinalType),
     Structured {
         packed: bool,
-        r#type: Box<UnpackedStructuredType<'source>>,
+        r#type: Box<UnpackedStructuredType>,
     },
-    Pointer(&'source str),
+    Pointer(Ident),
 }
 
 #[derive(Debug, Clone)]
-pub enum OrdinalType<'source> {
-    Enumerated(Vec<&'source str>),
+pub enum OrdinalType {
+    Enumerated(Vec<Ident>),
     Subrange {
-        lower: Expr<'source>,
-        upper: Expr<'source>,
+        lower: Spanned<Expr>,
+        upper: Spanned<Expr>,
     },
-    Identifier(&'source str),
+    Identifier(Ident),
 }
 
 #[derive(Clone, Debug)]
-pub enum UnpackedStructuredType<'source> {
+pub enum UnpackedStructuredType {
     Array {
-        indices: Vec<OrdinalType<'source>>,
-        elem: Type<'source>,
+        indices: Vec<OrdinalType>,
+        elem: Type,
     },
-    Record(FieldList<'source>),
-    Set(OrdinalType<'source>),
-    File(Type<'source>),
+    Record(FieldList),
+    Set(OrdinalType),
+    File(Type),
 }
 
 #[derive(Clone, Debug)]
-pub enum FieldList<'source> {
-    FixedOnly(FixedPart<'source>),
-    Both(FixedPart<'source>, VariantField<'source>),
-    VariantOnly(VariantField<'source>),
+pub enum FieldList {
+    FixedOnly(FixedPart),
+    Both(FixedPart, VariantField),
+    VariantOnly(VariantField),
     Empty,
 }
 
-type FixedPart<'source> = Vec<(Vec<&'source str>, Type<'source>)>;
+type FixedPart = Vec<(Vec<Ident>, Type)>;
 
 #[derive(Clone, Debug)]
-pub struct VariantField<'source> {
-    pub tag_field: Option<&'source str>,
-    pub tag_type: &'source str,
-    pub variants: Vec<Variant<'source>>,
+pub struct VariantField {
+    pub tag_field: Option<Ident>,
+    pub tag_type: Ident,
+    pub variants: Vec<Variant>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Variant<'source> {
-    pub case_labels: Vec<Expr<'source>>,
-    pub fields: FieldList<'source>,
+pub struct Variant {
+    pub case_labels: Vec<Expr>,
+    pub fields: FieldList,
 }
 
 #[derive(Clone, Debug)]
-pub enum RoutineDecl<'source> {
-    Proc(ProcDecl<'source>),
-    Func(FuncDecl<'source>),
+pub enum RoutineDecl {
+    Proc(ProcDecl),
+    Func(FuncDecl),
 }
 
 #[derive(Debug, Clone)]
-pub enum PostSig<'source> {
-    Block(Block<'source>),
-    Directive(Directive<'source>),
+pub enum PostSig {
+    Block(Block),
+    Directive(Directive),
 }
 
 #[derive(Clone, Debug)]
-pub struct ProcDecl<'source> {
-    pub sig: ProcSig<'source>,
-    pub post: PostSig<'source>,
+pub struct ProcDecl {
+    pub sig: ProcSig,
+    pub post: PostSig,
 }
 
 #[derive(Clone, Debug)]
-pub struct ProcSig<'source> {
-    pub name: &'source str,
+pub struct ProcSig {
+    pub name: Ident,
     /// params.is_empty() => procedure identification
     /// otherwise         => procedure heading
-    pub params: Vec<Param<'source>>,
+    pub params: Vec<Param>,
 }
 
 #[derive(Debug, Clone)]
-pub enum FuncDecl<'source> {
-    Ident(&'source str, Block<'source>),
-    Heading(FuncSig<'source>, PostSig<'source>),
+pub enum FuncDecl {
+    Ident(Ident, Block),
+    Heading(FuncSig, PostSig),
 }
 
 #[derive(Debug, Clone)]
-pub struct FuncSig<'source> {
-    pub name: &'source str,
-    pub params: Vec<Param<'source>>,
-    pub result: &'source str,
+pub struct FuncSig {
+    pub name: Ident,
+    pub params: Vec<Param>,
+    pub result: Ident,
 }
 
 #[derive(Debug, Clone)]
-pub enum Directive<'source> {
+pub enum Directive {
     Forward,
     External,
-    Unknown(&'source str),
-}
-
-impl<'source> From<&'source str> for Directive<'source> {
-    fn from(other: &'source str) -> Self {
-        match other.to_lowercase().as_str() {
-            "forward" => Self::Forward,
-            "external" => Self::External,
-            _ => Self::Unknown(other),
-        }
-    }
+    Unknown(Ident),
 }
 
 #[derive(Clone, Debug)]
-pub enum Param<'source> {
-    Value(Vec<&'source str>, ParamType<'source>),
-    Var(Vec<&'source str>, ParamType<'source>),
-    Proc(ProcSig<'source>),
-    Func(FuncSig<'source>),
+pub enum Param {
+    Value(Vec<Ident>, ParamType),
+    Var(Vec<Ident>, ParamType),
+    Proc(ProcSig),
+    Func(FuncSig),
 }
 
 #[derive(Clone, Debug)]
-pub enum ParamType<'source> {
-    TypeIdent(&'source str),
-    ArraySchema(Box<ArraySchema<'source>>),
+pub enum ParamType {
+    TypeIdent(Ident),
+    ArraySchema(Box<ArraySchema>),
 }
 
 #[derive(Clone, Debug)]
-pub enum ArraySchema<'source> {
+pub enum ArraySchema {
     Packed {
-        index: IndexTypeSpec<'source>,
-        elem: &'source str,
+        index: IndexTypeSpec,
+        elem: Ident,
     },
     Unpacked {
-        indices: Vec<IndexTypeSpec<'source>>,
-        elem: ParamType<'source>,
+        indices: Vec<IndexTypeSpec>,
+        elem: ParamType,
     },
 }
 
 #[derive(Clone, Debug)]
-pub struct IndexTypeSpec<'source> {
-    pub lower: &'source str,
-    pub upper: &'source str,
-    pub r#type: &'source str,
+pub struct IndexTypeSpec {
+    pub lower: Ident,
+    pub upper: Ident,
+    pub r#type: Ident,
 }

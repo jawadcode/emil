@@ -6,16 +6,17 @@ use crate::{
             ParamType, PostSig, ProcDecl, ProcSig, Program, RoutineDecl, Type,
             UnpackedStructuredType, Variant, VariantField,
         },
+        Ident,
     },
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
-    utils::trim_ends,
+    utils::{trim_ends, Spanned},
 };
 
 use super::{stmt::compound_stmt, ParseResult, ParserState};
 
-pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Program<'source>> {
+pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Program> {
     parser.expect(TokenKind::Program)?;
-    let name = parser.expect_source(TokenKind::Ident)?;
+    let name = parser.ident()?;
     let params = if parser.is(TokenKind::LParen) {
         parser.advance();
         let idents = ident_list(parser)?;
@@ -23,6 +24,10 @@ pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Progra
         idents
     } else {
         Vec::new()
+    };
+    let params = Spanned {
+        span: params.first().unwrap().span + params.last().unwrap().span,
+        node: params,
     };
     parser.expect(TokenKind::Semicolon)?;
     let block = block(parser)?;
@@ -35,18 +40,24 @@ pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Progra
     })
 }
 
-fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block<'source>> {
+fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Spanned<Block>> {
     let label_decls = if parser.is(TokenKind::Label) {
-        parser.advance();
+        let span_start = parser.advance().span;
         let res = parser.repeat_sep(TokenKind::Comma, |parser| {
             parser
                 .expect_source(TokenKind::UIntLit)
                 .map(parse_unsigned_integer)
         })?;
-        parser.expect(TokenKind::Semicolon)?;
-        res
+        let span_end = parser.expect(TokenKind::Semicolon)?.span;
+        Spanned {
+            span: span_start + span_end,
+            node: res,
+        }
     } else {
-        Vec::new()
+        Spanned {
+            span: (0..0).into(), // nonsense span because this shouldn't be referred to anywhere
+            node: Vec::new(),
+        }
     };
 
     let const_defs = if parser.is(TokenKind::Const) {
@@ -435,10 +446,8 @@ fn index_type_spec<'source>(
     })
 }
 
-fn ident_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<&'source str>> {
-    parser.repeat_sep(TokenKind::Comma, |parser| {
-        parser.expect_source(TokenKind::Ident)
-    })
+fn ident_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Ident>> {
+    parser.repeat_sep(TokenKind::Comma, |parser| parser.ident())
 }
 
 pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {

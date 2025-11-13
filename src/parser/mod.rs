@@ -3,7 +3,12 @@ use std::{
     iter::Peekable,
 };
 
-use crate::lexer::{Lexer, Token, TokenKind};
+use lasso::{Rodeo, Spur};
+
+use crate::{
+    ast::Ident,
+    lexer::{Lexer, Token, TokenKind},
+};
 
 pub mod expr;
 pub mod program;
@@ -11,8 +16,16 @@ pub mod stmt;
 
 pub struct ParserState<'source> {
     source: &'source str,
+    rodeo: Rodeo,
     lexer: Peekable<Lexer<'source>>,
 }
+
+pub struct SyntaxError {
+    pub expected: String,
+    pub got: Token,
+}
+
+pub type ParseResult<T> = Result<T, SyntaxError>;
 
 trait TokenPred: Clone {
     fn apply(self, parser: &mut ParserState) -> bool;
@@ -45,19 +58,20 @@ where
     }
 }
 
-pub struct SyntaxError {
-    pub expected: String,
-    pub got: Token,
-}
-
-pub type ParseResult<T> = Result<T, SyntaxError>;
-
 impl<'source> ParserState<'source> {
     pub fn new(source: &'source str) -> Self {
         Self {
             source,
+            rodeo: Rodeo::default(),
             lexer: Lexer::new(source).peekable(),
         }
+    }
+
+    /// Expects an identifier, extracts its source and then returns an interned identifier.
+    fn ident(&mut self) -> ParseResult<Ident> {
+        let tok = self.expect(TokenKind::Ident)?;
+        let ident = self.source[tok.span].to_lowercase();
+        Ok(tok.map(|_| self.rodeo.get_or_intern(ident)))
     }
 
     /// Gets the next token from the lexer.

@@ -9,8 +9,8 @@ pub fn trim_ends(s: &str) -> &str {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Span {
-    start: usize,
-    end: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
 impl From<Range<usize>> for Span {

@@ -1,70 +1,73 @@
-use crate::ast::expr::{Expr, Params, Var};
+use crate::ast::{
+    expr::{Expr, Params, Var},
+    Ident,
+};
 
-pub type CompoundStmt<'source> = Vec<MaybeLabelledStmt<'source>>;
+pub type CompoundStmt = Vec<MaybeLabelledStmt>;
 
 #[derive(Debug, Clone)]
-pub struct MaybeLabelledStmt<'source> {
+pub struct MaybeLabelledStmt {
     pub label: Option<u64>,
-    pub stmt: Box<Stmt<'source>>,
+    pub stmt: Box<Stmt>,
 }
 
 #[derive(Debug, Clone)]
-pub enum Stmt<'source> {
+pub enum Stmt {
     Empty,
     Assign {
-        var: Var<'source>,
-        value: Expr<'source>,
+        var: Var,
+        value: Expr,
     },
     // One or more
-    ReadCall(Vec<Var<'source>>),
+    ReadCall(Vec<Var>),
     // Zero or more
-    ReadlnCall(Vec<Var<'source>>),
+    ReadlnCall(Vec<Var>),
     // One or more
-    WriteCall(Vec<WriteParam<'source>>),
+    WriteCall(Vec<WriteParam>),
     // Zero or more
-    WritelnCall(Vec<WriteParam<'source>>),
+    WritelnCall(Vec<WriteParam>),
     ProcCall {
-        name: &'source str,
-        params: Params<'source>,
+        name: Ident,
+        params: Params,
     },
     Goto(u64),
-    Compound(CompoundStmt<'source>),
+    Compound(CompoundStmt),
     If {
-        cond: Expr<'source>,
-        then: MaybeLabelledStmt<'source>,
-        r#else: Option<MaybeLabelledStmt<'source>>,
+        cond: Expr,
+        then: MaybeLabelledStmt,
+        r#else: Option<MaybeLabelledStmt>,
     },
     Case {
-        index: Expr<'source>,
-        cases: Vec<Case<'source>>,
+        index: Expr,
+        cases: Vec<Case>,
     },
     While {
-        cond: Expr<'source>,
-        body: MaybeLabelledStmt<'source>,
+        cond: Expr,
+        body: MaybeLabelledStmt,
     },
     Repeat {
-        body: Vec<MaybeLabelledStmt<'source>>,
-        cond: Expr<'source>,
+        body: Vec<MaybeLabelledStmt>,
+        cond: Expr,
     },
     For {
-        control_var: &'source str,
-        from: Expr<'source>,
+        control_var: Ident,
+        from: Expr,
         direction: ForDirection,
-        to: Expr<'source>,
-        body: MaybeLabelledStmt<'source>,
+        to: Expr,
+        body: MaybeLabelledStmt,
     },
     With {
-        vars: Vec<Var<'source>>,
-        body: MaybeLabelledStmt<'source>,
+        vars: Vec<Var>,
+        body: MaybeLabelledStmt,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct WriteParam<'source> {
-    pub param: Expr<'source>,
+pub struct WriteParam {
+    pub param: Expr,
     pub specifiers: Option<(
-        /* field width */ Expr<'source>,
-        Option</* fractional digits */ Expr<'source>>,
+        /* field width */ Expr,
+        Option</* fractional digits */ Expr>,
     )>,
 }
 
@@ -75,7 +78,7 @@ pub enum ForDirection {
 }
 
 #[derive(Debug, Clone)]
-pub struct Case<'source> {
-    pub labels: Vec<Expr<'source>>,
-    pub body: MaybeLabelledStmt<'source>,
+pub struct Case {
+    pub labels: Vec<Expr>,
+    pub body: MaybeLabelledStmt,
 }

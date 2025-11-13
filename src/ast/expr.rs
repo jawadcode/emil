@@ -1,34 +1,36 @@
-use crate::lexer::TokenKind;
+use crate::{ast::Ident, lexer::TokenKind, utils::Spanned};
+
+pub type Expr = Spanned<UnspanExpr>;
 
 #[derive(Debug, Clone)]
-pub enum Expr<'source> {
-    Var(Var<'source>),
+pub enum UnspanExpr {
+    Var(Var),
     Nil,
     UIntLit(u64),
     URealLit(f64),
-    StrLit(&'source str),
-    Set(Vec<Expr<'source>>),
-    FuncCall(&'source str, Box<Params<'source>>),
+    StrLit(String),
+    Set(Vec<Expr>),
+    FuncCall(Ident, Box<Params>),
     UnaryOp {
         op: UnaryOp,
-        operand: Box<Expr<'source>>,
+        operand: Box<Expr>,
     },
     BinOp {
         op: BinOp,
-        left: Box<Expr<'source>>,
-        right: Box<Expr<'source>>,
+        left: Box<Expr>,
+        right: Box<Expr>,
     },
 }
 
 #[derive(Debug, Clone)]
-pub enum Var<'source> {
-    Plain(&'source str),
-    Ref(Box<Var<'source>>),
-    Indexed(Box<Var<'source>>, Vec<Expr<'source>>),
-    FieldAccess(Box<Var<'source>>, &'source str),
+pub enum Var {
+    Plain(Ident),
+    Ref(Box<Var>),
+    Indexed(Box<Var>, Vec<Expr>),
+    FieldAccess(Box<Var>, Ident),
 }
 
-pub type Params<'source> = Vec<Expr<'source>>;
+pub type Params = Vec<Expr>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnaryOp {
