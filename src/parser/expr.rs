@@ -1,7 +1,7 @@
 use crate::{
     ast::expr::{Expr, Params, UnaryOp, Var},
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
-    utils::trim_ends,
+    utils::{trim_ends, Spanned},
 };
 
 use super::{ParseResult, ParserState};
@@ -21,7 +21,10 @@ pub fn expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'sou
             let left = Box::new(left);
             let op = parser.advance().node.into();
             let right = simple_expr(parser).map(Box::new)?;
-            Ok(Expr::BinOp { op, left, right })
+            Ok(Spanned {
+                span: (&left).span + right.span,
+                node: Expr::BinOp { op, left, right },
+            })
         },
         simple_expr,
     )

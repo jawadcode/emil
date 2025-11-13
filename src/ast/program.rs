@@ -1,6 +1,10 @@
 use crate::{
-    ast::{expr::Expr, stmt::CompoundStmt, Ident},
-    utils::Spanned,
+    ast::{
+        expr::{Expr, SpanExpr},
+        stmt::CompoundStmt,
+        Ident, UnspanIdent,
+    },
+    utils::{Span, Spanned},
 };
 
 #[derive(Debug, Clone)]
@@ -13,11 +17,11 @@ pub struct Program {
 #[derive(Debug, Clone)]
 pub struct Block {
     pub label_decls: Spanned<Vec<Spanned<u64>>>,
-    pub const_defs: Spanned<Vec<ConstDef>>,
-    pub type_defs: Spanned<Vec<TypeDef>>,
-    pub var_decls: Spanned<Vec<VarDecl>>,
+    pub const_defs: Spanned<Vec<Spanned<ConstDef>>>,
+    pub type_defs: Spanned<Vec<Spanned<TypeDef>>>,
+    pub var_decls: Spanned<Vec<Spanned<VarDecl>>>,
     pub routine_decls: Spanned<Vec<Spanned<RoutineDecl>>>,
-    pub stmts: Spanned<CompoundStmt>,
+    pub stmts: Spanned<Spanned<CompoundStmt>>,
 }
 
 #[derive(Debug, Clone)]
@@ -40,29 +44,26 @@ pub struct VarDecl {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Ordinal(OrdinalType),
+    Ordinal(Spanned<OrdinalType>),
     Structured {
-        packed: bool,
-        r#type: Box<UnpackedStructuredType>,
+        packed: Option<Span>,
+        r#type: Box<Spanned<UnpackedStructuredType>>,
     },
-    Pointer(Ident),
+    Pointer(UnspanIdent),
 }
 
 #[derive(Debug, Clone)]
 pub enum OrdinalType {
     Enumerated(Vec<Ident>),
-    Subrange {
-        lower: Spanned<Expr>,
-        upper: Spanned<Expr>,
-    },
-    Identifier(Ident),
+    Subrange { lower: SpanExpr, upper: SpanExpr },
+    Identifier(UnspanIdent),
 }
 
 #[derive(Clone, Debug)]
 pub enum UnpackedStructuredType {
     Array {
-        indices: Vec<OrdinalType>,
-        elem: Type,
+        indices: Spanned<Vec<Spanned<OrdinalType>>>,
+        elem: Spanned<Type>,
     },
     Record(FieldList),
     Set(OrdinalType),
@@ -72,24 +73,30 @@ pub enum UnpackedStructuredType {
 #[derive(Clone, Debug)]
 pub enum FieldList {
     FixedOnly(FixedPart),
-    Both(FixedPart, VariantField),
-    VariantOnly(VariantField),
+    Both(FixedPart, Spanned<VariantField>),
+    VariantOnly(Spanned<VariantField>),
     Empty,
 }
 
-type FixedPart = Vec<(Vec<Ident>, Type)>;
+type FixedPart = Spanned<Vec<Spanned<FixedFields>>>;
+
+#[derive(Clone, Debug)]
+pub struct FixedFields {
+    names: Spanned<Vec<Ident>>,
+    r#type: Spanned<Type>,
+}
 
 #[derive(Clone, Debug)]
 pub struct VariantField {
     pub tag_field: Option<Ident>,
     pub tag_type: Ident,
-    pub variants: Vec<Variant>,
+    pub variants: Spanned<Vec<Spanned<Variant>>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Variant {
-    pub case_labels: Vec<Expr>,
-    pub fields: FieldList,
+    pub case_labels: Spanned<Vec<SpanExpr>>,
+    pub fields: Spanned<FieldList>,
 }
 
 #[derive(Clone, Debug)]
@@ -106,8 +113,8 @@ pub enum PostSig {
 
 #[derive(Clone, Debug)]
 pub struct ProcDecl {
-    pub sig: ProcSig,
-    pub post: PostSig,
+    pub sig: Spanned<ProcSig>,
+    pub post: Spanned<PostSig>,
 }
 
 #[derive(Clone, Debug)]
@@ -115,19 +122,19 @@ pub struct ProcSig {
     pub name: Ident,
     /// params.is_empty() => procedure identification
     /// otherwise         => procedure heading
-    pub params: Vec<Param>,
+    pub params: Vec<Spanned<Spanned<Param>>>,
 }
 
 #[derive(Debug, Clone)]
 pub enum FuncDecl {
-    Ident(Ident, Block),
-    Heading(FuncSig, PostSig),
+    Ident(Ident, Spanned<Block>),
+    Heading(Spanned<FuncSig>, Spanned<PostSig>),
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncSig {
     pub name: Ident,
-    pub params: Vec<Param>,
+    pub params: Spanned<Vec<Spanned<Param>>>,
     pub result: Ident,
 }
 
@@ -140,8 +147,8 @@ pub enum Directive {
 
 #[derive(Clone, Debug)]
 pub enum Param {
-    Value(Vec<Ident>, ParamType),
-    Var(Vec<Ident>, ParamType),
+    Value(Spanned<Vec<Ident>>, Spanned<Box<Param>>),
+    Var(Spanned<Vec<Ident>>, Spanned<Vec<Ident>>),
     Proc(ProcSig),
     Func(FuncSig),
 }
@@ -155,12 +162,12 @@ pub enum ParamType {
 #[derive(Clone, Debug)]
 pub enum ArraySchema {
     Packed {
-        index: IndexTypeSpec,
+        index: Spanned<IndexTypeSpec>,
         elem: Ident,
     },
     Unpacked {
-        indices: Vec<IndexTypeSpec>,
-        elem: ParamType,
+        indices: Spanned<Vec<Spanned<IndexTypeSpec>>>,
+        elem: Spanned<ParamType>,
     },
 }
 

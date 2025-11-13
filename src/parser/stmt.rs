@@ -5,6 +5,7 @@ use crate::{
     },
     lexer::{parse_unsigned_integer, TokenKind},
     parser::expr::VAR_EXT_START,
+    utils::Spanned,
 };
 
 use super::{
@@ -15,16 +16,19 @@ use super::{
 
 pub fn compound_stmt<'source>(
     parser: &mut ParserState<'source>,
-) -> ParseResult<CompoundStmt<'source>> {
-    parser.expect(TokenKind::Begin)?;
+) -> ParseResult<Spanned<CompoundStmt>> {
+    let span_start = parser.expect(TokenKind::Begin)?.span;
     let stmts = stmt_seq(parser)?;
-    parser.expect(TokenKind::End)?;
-    Ok(stmts)
+    let span_end = parser.expect(TokenKind::End)?.span;
+    Ok(Spanned {
+        span: span_start + span_end,
+        node: stmts,
+    })
 }
 
 fn stmt_seq<'source>(
     parser: &mut ParserState<'source>,
-) -> ParseResult<Vec<MaybeLabelledStmt<'source>>> {
+) -> ParseResult<Spanned<Vec<MaybeLabelledStmt>>> {
     parser.repeat_sep(TokenKind::Semicolon, maybe_labelled_stmt)
 }
 

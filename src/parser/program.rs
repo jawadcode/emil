@@ -15,7 +15,7 @@ use crate::{
 use super::{stmt::compound_stmt, ParseResult, ParserState};
 
 pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Program> {
-    parser.expect(TokenKind::Program)?;
+    let start_span = parser.expect(TokenKind::Program)?.span;
     let name = parser.ident()?;
     let params = if parser.is(TokenKind::LParen) {
         parser.advance();
@@ -23,24 +23,23 @@ pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Progra
         parser.expect(TokenKind::RParen)?;
         idents
     } else {
-        Vec::new()
-    };
-    let params = Spanned {
-        span: params.first().unwrap().span + params.last().unwrap().span,
-        node: params,
+        empty_list()
     };
     parser.expect(TokenKind::Semicolon)?;
     let block = block(parser)?;
-    parser.expect(TokenKind::Dot)?;
+    let end_span = parser.expect(TokenKind::Dot)?.span;
 
-    Ok(Program {
-        name,
-        params,
-        block,
+    Ok(Spanned {
+        span: start_span + end_span,
+        node: Program {
+            name,
+            params,
+            block,
+        },
     })
 }
 
-fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Spanned<Block>> {
+fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block> {
     let label_decls = if parser.is(TokenKind::Label) {
         let span_start = parser.advance().span;
         let res = parser.repeat_sep(TokenKind::Comma, |parser| {
@@ -450,7 +449,7 @@ fn ident_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Ide
     parser.repeat_sep(TokenKind::Comma, |parser| parser.ident())
 }
 
-pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr> {
     Ok(match parser.peek() {
         TokenKind::UIntLit => Expr::UIntLit(parse_unsigned_integer(parser.advance_source())),
         TokenKind::URealLit => Expr::URealLit(parse_unsigned_real(parser.advance_source())),
@@ -475,4 +474,12 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResu
         }
         _ => return parser.next_error("numeric literal, string literal, identifier, '+' or '-'"),
     })
+}
+
+/// Return an empty list with a nonsense span as it should never be accessed
+fn empty_list<T: Clone + std::fmt::Debug>() -> Spanned<Vec<T>> {
+    Spanned {
+        span: (0..0).into(),
+        node: Vec::new(),
+    }
 }

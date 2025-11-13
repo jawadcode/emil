@@ -1,13 +1,14 @@
 use std::{
-    fmt::{self, Display},
+    fmt::{self, Debug, Display},
     iter::Peekable,
 };
 
-use lasso::{Rodeo, Spur};
+use lasso::Rodeo;
 
 use crate::{
-    ast::Ident,
+    ast::UnspanIdent,
     lexer::{Lexer, Token, TokenKind},
+    utils::Spanned,
 };
 
 pub mod expr;
@@ -25,7 +26,7 @@ pub struct SyntaxError {
     pub got: Token,
 }
 
-pub type ParseResult<T> = Result<T, SyntaxError>;
+pub type ParseResult<T: Clone + Debug> = Result<Spanned<T>, SyntaxError>;
 
 trait TokenPred: Clone {
     fn apply(self, parser: &mut ParserState) -> bool;
@@ -68,10 +69,10 @@ impl<'source> ParserState<'source> {
     }
 
     /// Expects an identifier, extracts its source and then returns an interned identifier.
-    fn ident(&mut self) -> ParseResult<Ident> {
-        let tok = self.expect(TokenKind::Ident)?;
-        let ident = self.source[tok.span].to_lowercase();
-        Ok(tok.map(|_| self.rodeo.get_or_intern(ident)))
+    fn ident(&mut self) -> ParseResult<UnspanIdent> {
+        Ok(self
+            .expect_source(TokenKind::Ident)?
+            .map(|ident| self.rodeo.get_or_intern(ident.to_lowercase())))
     }
 
     /// Gets the next token from the lexer.
@@ -79,7 +80,7 @@ impl<'source> ParserState<'source> {
     /// # Errors
     ///
     /// Errors if the next token is [`TokenKind::Eof`].
-    fn next(&mut self) -> ParseResult<Token> {
+    fn next(&mut self) -> ParseResult<TokenKind> {
         self.lexer.next().ok_or_else(|| self.error_eof())
     }
 
@@ -96,7 +97,7 @@ impl<'source> ParserState<'source> {
     /// # Errors
     ///
     /// Errors if the lexer returns `None`, or the next token does not match [expected].
-    fn expect(&mut self, expected: TokenKind) -> ParseResult<Token> {
+    fn expect(&mut self, expected: TokenKind) -> ParseResult<TokenKind> {
         self.next().and_then(|got| {
             if got.node != expected {
                 Err(SyntaxError {
@@ -127,7 +128,10 @@ impl<'source> ParserState<'source> {
     /// Errors if the lexer returns [`None`], or the next token and [expected] do not match.
     fn expect_source(&mut self, expected: TokenKind) -> ParseResult<&'source str> {
         let Token { span, .. } = self.expect(expected)?;
-        Ok(&self.source[span])
+        Ok(Spanned {
+            span,
+            node: &self.source[span],
+        })
     }
 
     /// Gets the next token and returns its corresponding source string slice.
@@ -146,45 +150,64 @@ impl<'source> ParserState<'source> {
     ///
     /// Ideally the [parser] would return [`ControlFlow`] so we can allow it to break out of the
     /// loop early.
-    fn repeated<T>(
+    fn repeated<T: Clone + Debug>(
         &mut self,
         on: impl TokenPred,
         parser: impl Fn(&mut ParserState<'source>) -> ParseResult<T>,
-    ) -> ParseResult<Vec<T>> {
+    ) -> ParseResult<Vec<Spanned<T>>> {
         let mut items = Vec::new();
+        let mut span = (0..0).into();
         while on.clone().apply(self) {
-            items.push(parser(self)?);
+            let parsed = parser(self)?;
+            span += parsed.span;
+            items.push(parsed);
         }
-        Ok(items)
+        Ok(Spanned { span, node: items })
     }
 
     /// Parses one or more of [parser], repeating based on the apperance of the token [on] and [separator].
-    fn repeat_sep<T>(
+    fn repeat_sep<T: Debug + Clone>(
         &mut self,
         separator: impl TokenPred,
         parser: impl Fn(&mut ParserState<'source>) -> ParseResult<T>,
-    ) -> ParseResult<Vec<T>> {
+    ) -> ParseResult<Vec<Spanned<T>>> {
         let mut items = Vec::new();
-        items.push(parser(self)?);
+        let first = parser(self)?;
+        let start_span = first.span;
+        items.push(first);
 
         while self.is(separator.clone()) {
             self.advance();
             items.push(parser(self)?);
         }
+        let end_span = items.last().unwrap().span;
 
-        Ok(items)
+        Ok(Spanned {
+            span: start_span + end_span,
+            node: items,
+        })
     }
 
     /// Repeatedly apply an extension parser [ext] to the result of an initial parser [init].
-    fn repeat_fold<T, P, I>(&mut self, start: impl TokenPred, ext: P, init: I) -> ParseResult<T>
+    fn repeat_fold<T: Clone + Debug, P, I>(
+        &mut self,
+        start: impl TokenPred,
+        ext: P,
+        init: I,
+    ) -> ParseResult<T>
     where
-        P: Fn(&mut ParserState<'source>, T) -> ParseResult<T>,
+        P: Fn(&mut ParserState<'source>, Spanned<T>) -> ParseResult<T>,
         I: Fn(&mut ParserState<'source>) -> ParseResult<T>,
     {
         let mut result = init(self)?;
 
         while self.is(start.clone()) {
-            result = ext(self, result)?;
+            let lhs_span = result.span;
+            let ext = ext(self, result)?;
+            result = Spanned {
+                span: lhs_span + ext.span,
+                node: ext,
+            };
         }
 
         Ok(result)
@@ -192,7 +215,7 @@ impl<'source> ParserState<'source> {
 
     /// Constructs an error that consumes the next token.
     /// For use with [`Parser::peek`] or [`Parser::is`].
-    fn next_error<T>(&mut self, expected: &str) -> ParseResult<T> {
+    fn next_error<T: Clone + Debug>(&mut self, expected: &str) -> ParseResult<T> {
         let expected = expected.to_owned();
         let got = self.next()?;
         Err(SyntaxError { expected, got })

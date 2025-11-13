@@ -7,3 +7,4 @@ pub mod program;
 pub mod stmt;
 
 pub type Ident = Spanned<Spur>;
+pub type UnspanIdent = Spur;
