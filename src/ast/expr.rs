@@ -1,4 +1,8 @@
-use crate::{ast::Ident, lexer::TokenKind, utils::Spanned};
+use crate::{
+    ast::{Ident, UnspanIdent},
+    lexer::TokenKind,
+    utils::Spanned,
+};
 
 pub type SpanExpr = Spanned<Expr>;
 
@@ -26,7 +30,7 @@ pub type SpanVar = Spanned<Var>;
 
 #[derive(Debug, Clone)]
 pub enum Var {
-    Plain(Ident),
+    Plain(UnspanIdent),
     Ref(Box<SpanVar>),
     Indexed(Box<SpanVar>, Vec<SpanExpr>),
     FieldAccess(Box<SpanVar>, Ident),

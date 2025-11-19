@@ -2,19 +2,20 @@ use crate::{
     ast::{
         expr::{Expr, UnaryOp, Var},
         program::{
-            ArraySchema, Block, FieldList, FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param,
-            ParamType, PostSig, ProcDecl, ProcSig, Program, RoutineDecl, Type,
-            UnpackedStructuredType, Variant, VariantField,
+            ArraySchema, Block, ConstDef, FieldList, FuncDecl, FuncSig, IndexTypeSpec, OrdinalType,
+            Param, ParamType, PostSig, ProcDecl, ProcSig, Program, RoutineDecl, Type, TypeDef,
+            UnpackedStructuredType, VarDecl, Variant, VariantField,
         },
         Ident,
     },
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
+    parser::empty_list,
     utils::{trim_ends, Spanned},
 };
 
-use super::{stmt::compound_stmt, ParseResult, ParserState};
+use super::{stmt::compound_stmt, ParserState, SpanParseResult};
 
-pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Program> {
+pub fn program<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Program> {
     let start_span = parser.expect(TokenKind::Program)?.span;
     let name = parser.ident()?;
     let params = if parser.is(TokenKind::LParen) {
@@ -39,13 +40,13 @@ pub fn program<'source>(parser: &mut ParserState<'source>) -> ParseResult<Progra
     })
 }
 
-fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block> {
+fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
     let label_decls = if parser.is(TokenKind::Label) {
         let span_start = parser.advance().span;
         let res = parser.repeat_sep(TokenKind::Comma, |parser| {
             parser
                 .expect_source(TokenKind::UIntLit)
-                .map(parse_unsigned_integer)
+                .map(|num| num.map(parse_unsigned_integer))
         })?;
         let span_end = parser.expect(TokenKind::Semicolon)?.span;
         Spanned {
@@ -53,23 +54,23 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block> {
             node: res,
         }
     } else {
-        Spanned {
-            span: (0..0).into(), // nonsense span because this shouldn't be referred to anywhere
-            node: Vec::new(),
-        }
+        empty_list()
     };
 
     let const_defs = if parser.is(TokenKind::Const) {
         parser.advance();
         parser.repeated(TokenKind::Ident, |parser| {
-            let name = parser.advance_source();
+            let name = parser.advance_ident();
             parser.expect(TokenKind::Eq)?;
             let value = constexpr(parser)?;
-            parser.expect(TokenKind::Semicolon)?;
-            Ok((name, value))
+            let span_end = parser.expect(TokenKind::Semicolon)?.span;
+            Ok(Spanned {
+                span: name.span + span_end,
+                node: ConstDef { name, value },
+            })
         })?
     } else {
-        Vec::new()
+        empty_list()
     };
 
     let type_defs = if parser.is(TokenKind::Type) {
@@ -77,12 +78,15 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block> {
         parser.repeated(TokenKind::Ident, |parser| {
             let name = parser.advance_source();
             parser.expect(TokenKind::Eq)?;
-            let r#type = r#type(parser)?;
-            parser.expect(TokenKind::Semicolon)?;
-            Ok((name, r#type))
+            let def = r#type(parser)?;
+            let span_end = parser.expect(TokenKind::Semicolon)?.span;
+            Ok(Spanned {
+                span: name.span + span_end,
+                node: TypeDef { name, def },
+            })
         })?
     } else {
-        Vec::new()
+        empty_list()
     };
 
     let var_decls = if parser.is(TokenKind::Var) {
@@ -91,28 +95,35 @@ fn block<'source>(parser: &mut ParserState<'source>) -> ParseResult<Block> {
             let names = ident_list(parser)?;
             parser.expect(TokenKind::Colon)?;
             let r#type = r#type(parser)?;
-            parser.expect(TokenKind::Semicolon)?;
-            Ok((names, r#type))
+            let span_end = parser.expect(TokenKind::Semicolon)?.span;
+            // Ok((names, r#type))
+            Ok(Spanned {
+                span: names.span + span_end,
+                node: VarDecl { names, r#type },
+            })
         })?
     } else {
-        Vec::new()
+        empty_list()
     };
 
     let routine_decls = routine_decls(parser)?;
 
     let stmts = compound_stmt(parser)?;
 
-    Ok(Block {
-        label_decls,
-        const_defs,
-        type_defs,
-        var_decls,
-        routine_decls,
-        stmts,
+    Ok(Spanned {
+        span: label_decls.span + stmts.span,
+        node: Block {
+            label_decls,
+            const_defs,
+            type_defs,
+            var_decls,
+            routine_decls,
+            stmts,
+        },
     })
 }
 
-fn r#type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Type<'source>> {
+fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type<'source>> {
     match parser.peek() {
         TokenKind::Ident => Ok(Type::Ordinal(OrdinalType::Identifier(
             parser.advance_source(),
@@ -139,7 +150,9 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Type<'sourc
     }
 }
 
-fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<OrdinalType<'source>> {
+fn ordinal_type<'source>(
+    parser: &mut ParserState<'source>,
+) -> SpanParseResult<OrdinalType<'source>> {
     match parser.peek() {
         TokenKind::Ident => {
             let ident = parser.advance_source();
@@ -169,7 +182,9 @@ fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Ordin
     }
 }
 
-fn subrange_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<OrdinalType<'source>> {
+fn subrange_type<'source>(
+    parser: &mut ParserState<'source>,
+) -> SpanParseResult<OrdinalType<'source>> {
     let lower = constexpr(parser)?;
     parser.expect(TokenKind::Ellipsis)?;
     let upper = constexpr(parser)?;
@@ -178,7 +193,7 @@ fn subrange_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<Ordi
 
 fn unpacked_structured_type<'source>(
     parser: &mut ParserState<'source>,
-) -> ParseResult<UnpackedStructuredType<'source>> {
+) -> SpanParseResult<UnpackedStructuredType<'source>> {
     match parser.peek() {
         TokenKind::Array => {
             parser.advance();
@@ -211,7 +226,7 @@ fn unpacked_structured_type<'source>(
     }
 }
 
-fn field_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<FieldList<'source>> {
+fn field_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<FieldList<'source>> {
     let body = match parser.peek() {
         TokenKind::Ident => {
             let fixed = parser.repeat_sep(TokenKind::Semicolon, |parser| {
@@ -243,7 +258,9 @@ fn field_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<FieldLi
     Ok(body)
 }
 
-fn variant_field<'source>(parser: &mut ParserState<'source>) -> ParseResult<VariantField<'source>> {
+fn variant_field<'source>(
+    parser: &mut ParserState<'source>,
+) -> SpanParseResult<VariantField<'source>> {
     parser.advance();
     let tag_field = if parser.is(TokenKind::Ident) {
         let ident = parser.advance_source();
@@ -272,7 +289,7 @@ fn variant_field<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vari
 
 fn routine_decls<'source>(
     parser: &mut ParserState<'source>,
-) -> ParseResult<Vec<RoutineDecl<'source>>> {
+) -> SpanParseResult<Vec<RoutineDecl<'source>>> {
     parser.repeated(&[TokenKind::Procedure, TokenKind::Function], |parser| {
         let routine_decl = match parser.peek() {
             TokenKind::Procedure => proc_decl(parser).map(RoutineDecl::Proc)?,
@@ -284,7 +301,7 @@ fn routine_decls<'source>(
     })
 }
 
-fn post_sig<'source>(parser: &mut ParserState<'source>) -> ParseResult<PostSig<'source>> {
+fn post_sig<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<PostSig<'source>> {
     match parser.peek() {
         TokenKind::Ident => Ok(PostSig::Directive(parser.advance_source().into())),
         TokenKind::Begin => block(parser).map(PostSig::Block),
@@ -292,7 +309,7 @@ fn post_sig<'source>(parser: &mut ParserState<'source>) -> ParseResult<PostSig<'
     }
 }
 
-fn proc_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<ProcDecl<'source>> {
+fn proc_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<ProcDecl<'source>> {
     parser.advance();
     let name = parser.expect_source(TokenKind::Ident)?;
     let params = if parser.is(TokenKind::LParen) {
@@ -308,7 +325,7 @@ fn proc_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<ProcDecl
     })
 }
 
-fn func_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<FuncDecl<'source>> {
+fn func_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<FuncDecl<'source>> {
     parser.advance();
     let name = parser.expect_source(TokenKind::Ident)?;
     let params = if parser.is(TokenKind::LParen) {
@@ -342,7 +359,7 @@ fn func_decl<'source>(parser: &mut ParserState<'source>) -> ParseResult<FuncDecl
     }
 }
 
-fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Param<'source>>> {
+fn params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<Param<'source>>> {
     parser.advance();
     let params = parser.repeat_sep(TokenKind::Comma, param)?;
     parser.expect(TokenKind::RParen)?;
@@ -350,7 +367,7 @@ fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Param<'
     Ok(params)
 }
 
-fn param<'source>(parser: &mut ParserState<'source>) -> ParseResult<Param<'source>> {
+fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param<'source>> {
     match parser.peek() {
         TokenKind::Ident => {
             let params = ident_list(parser)?;
@@ -391,7 +408,7 @@ fn param<'source>(parser: &mut ParserState<'source>) -> ParseResult<Param<'sourc
     }
 }
 
-fn param_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<ParamType<'source>> {
+fn param_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<ParamType<'source>> {
     match parser.peek() {
         TokenKind::Ident => Ok(ParamType::TypeIdent(parser.advance_source())),
         TokenKind::Packed => {
@@ -431,7 +448,7 @@ fn param_type<'source>(parser: &mut ParserState<'source>) -> ParseResult<ParamTy
 
 fn index_type_spec<'source>(
     parser: &mut ParserState<'source>,
-) -> ParseResult<IndexTypeSpec<'source>> {
+) -> SpanParseResult<IndexTypeSpec<'source>> {
     let lower = parser.expect_source(TokenKind::Ident)?;
     parser.expect(TokenKind::Ellipsis)?;
     let upper = parser.expect_source(TokenKind::Ident)?;
@@ -445,11 +462,11 @@ fn index_type_spec<'source>(
     })
 }
 
-fn ident_list<'source>(parser: &mut ParserState<'source>) -> ParseResult<Vec<Ident>> {
+fn ident_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<Ident>> {
     parser.repeat_sep(TokenKind::Comma, |parser| parser.ident())
 }
 
-pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr> {
+pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     Ok(match parser.peek() {
         TokenKind::UIntLit => Expr::UIntLit(parse_unsigned_integer(parser.advance_source())),
         TokenKind::URealLit => Expr::URealLit(parse_unsigned_real(parser.advance_source())),
@@ -474,12 +491,4 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> ParseResu
         }
         _ => return parser.next_error("numeric literal, string literal, identifier, '+' or '-'"),
     })
-}
-
-/// Return an empty list with a nonsense span as it should never be accessed
-fn empty_list<T: Clone + std::fmt::Debug>() -> Spanned<Vec<T>> {
-    Spanned {
-        span: (0..0).into(),
-        node: Vec::new(),
-    }
 }

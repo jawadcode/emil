@@ -1,12 +1,12 @@
 use crate::{
-    ast::expr::{Expr, Params, UnaryOp, Var},
+    ast::expr::{Expr, Params, SpanVar, UnaryOp, Var},
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
     utils::{trim_ends, Spanned},
 };
 
-use super::{ParseResult, ParserState};
+use super::{ParserState, SpanParseResult};
 
-pub fn expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+pub fn expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     parser.repeat_fold(
         &[
             TokenKind::Eq,
@@ -30,7 +30,7 @@ pub fn expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'sou
     )
 }
 
-fn simple_expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+fn simple_expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     let sign = match parser.peek() {
         TokenKind::Plus | TokenKind::Minus => Some(parser.advance().node.into()),
         _ => None,
@@ -54,7 +54,7 @@ fn simple_expr<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'
     )
 }
 
-fn term<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+fn term<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     parser.repeat_fold(
         &[
             TokenKind::Asterisk,
@@ -73,7 +73,7 @@ fn term<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>
     )
 }
 
-fn factor<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     match parser.peek() {
         TokenKind::UIntLit => Ok(Expr::UIntLit(parse_unsigned_integer(
             parser.advance_source(),
@@ -115,7 +115,7 @@ pub(super) const VAR_EXT_START: &[TokenKind] = &[
     TokenKind::Dot,
 ];
 
-fn factor_ident<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<'source>> {
+fn factor_ident<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     let ident = parser.advance_source();
     if parser.is(VAR_EXT_START) {
         parser
@@ -129,7 +129,7 @@ fn factor_ident<'source>(parser: &mut ParserState<'source>) -> ParseResult<Expr<
     }
 }
 
-pub(super) fn var<'source>(parser: &mut ParserState<'source>) -> ParseResult<Var<'source>> {
+pub(super) fn var<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Var> {
     parser.repeat_fold(VAR_EXT_START, var_ext, |parser| {
         Ok(Var::Plain(parser.advance_source()))
     })
@@ -137,8 +137,8 @@ pub(super) fn var<'source>(parser: &mut ParserState<'source>) -> ParseResult<Var
 
 pub(super) fn var_ext<'source>(
     parser: &mut ParserState<'source>,
-    var: Var<'source>,
-) -> ParseResult<Var<'source>> {
+    var: SpanVar,
+) -> SpanParseResult<Var> {
     match parser.peek() {
         TokenKind::Caret | TokenKind::UpArrow => {
             parser.advance();
@@ -159,7 +159,7 @@ pub(super) fn var_ext<'source>(
     }
 }
 
-pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> ParseResult<Params<'source>> {
+pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Params> {
     parser.advance();
     let params = parser.repeat_sep(TokenKind::Comma, expr)?;
     parser.expect(TokenKind::RParen)?;

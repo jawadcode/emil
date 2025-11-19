@@ -26,20 +26,20 @@ pub struct Block {
 
 #[derive(Debug, Clone)]
 pub struct ConstDef {
-    name: Ident,
-    value: Expr,
+    pub name: Ident,
+    pub value: SpanExpr,
 }
 
 #[derive(Debug, Clone)]
 pub struct TypeDef {
-    name: Ident,
-    def: Spanned<Type>,
+    pub name: Ident,
+    pub def: Spanned<Type>,
 }
 
 #[derive(Debug, Clone)]
 pub struct VarDecl {
-    names: Vec<Ident>,
-    r#type: Spanned<Type>,
+    pub names: Spanned<Vec<Ident>>,
+    pub r#type: Spanned<Type>,
 }
 
 #[derive(Debug, Clone)]

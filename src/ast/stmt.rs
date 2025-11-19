@@ -24,13 +24,13 @@ pub enum Stmt {
         value: SpanExpr,
     },
     // One or more
-    ReadCall(Vec<SpanVar>),
+    ReadCall(Spanned<Vec<SpanVar>>),
     // Zero or more
-    ReadlnCall(Vec<SpanVar>),
+    ReadlnCall(Spanned<Vec<SpanVar>>),
     // One or more
-    WriteCall(Vec<Spanned<WriteParam>>),
+    WriteCall(Spanned<Vec<Spanned<WriteParam>>>),
     // Zero or more
-    WritelnCall(Vec<Spanned<WriteParam>>),
+    WritelnCall(Spanned<Vec<Spanned<WriteParam>>>),
     ProcCall {
         name: Ident,
         params: Spanned<Params>,
@@ -70,7 +70,7 @@ pub enum Stmt {
 #[derive(Debug, Clone)]
 pub struct WriteParam {
     pub param: SpanExpr,
-    pub specifiers: Spanned<WriteParamSpecs>,
+    pub specifiers: Option<Spanned<WriteParamSpecs>>,
 }
 
 #[derive(Debug, Clone)]
