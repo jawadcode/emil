@@ -21,7 +21,7 @@ pub struct Block {
     pub type_defs: Spanned<Vec<Spanned<TypeDef>>>,
     pub var_decls: Spanned<Vec<Spanned<VarDecl>>>,
     pub routine_decls: Spanned<Vec<Spanned<RoutineDecl>>>,
-    pub stmts: Spanned<Spanned<CompoundStmt>>,
+    pub stmts: Spanned<CompoundStmt>,
 }
 
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ pub struct VarDecl {
 
 #[derive(Debug, Clone)]
 pub enum Type {
-    Ordinal(Spanned<OrdinalType>),
+    Ordinal(OrdinalType),
     Structured {
         packed: Option<Span>,
         r#type: Box<Spanned<UnpackedStructuredType>>,
@@ -72,9 +72,9 @@ pub enum UnpackedStructuredType {
 
 #[derive(Clone, Debug)]
 pub enum FieldList {
-    FixedOnly(FixedPart),
+    FixedOnly(Vec<Spanned<FixedFields>>),
     Both(FixedPart, Spanned<VariantField>),
-    VariantOnly(Spanned<VariantField>),
+    VariantOnly(VariantField),
     Empty,
 }
 
@@ -82,8 +82,8 @@ type FixedPart = Spanned<Vec<Spanned<FixedFields>>>;
 
 #[derive(Clone, Debug)]
 pub struct FixedFields {
-    names: Spanned<Vec<Ident>>,
-    r#type: Spanned<Type>,
+    pub names: Spanned<Vec<Ident>>,
+    pub r#type: Spanned<Type>,
 }
 
 #[derive(Clone, Debug)]
@@ -122,7 +122,7 @@ pub struct ProcSig {
     pub name: Ident,
     /// params.is_empty() => procedure identification
     /// otherwise         => procedure heading
-    pub params: Vec<Spanned<Spanned<Param>>>,
+    pub params: Vec<Spanned<Param>>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,10 +145,16 @@ pub enum Directive {
     Unknown(Ident),
 }
 
+impl From<&str> for Directive {
+    fn from(value: &str) -> Self {
+        todo!()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Param {
-    Value(Spanned<Vec<Ident>>, Spanned<Box<Param>>),
-    Var(Spanned<Vec<Ident>>, Spanned<Vec<Ident>>),
+    Value(Spanned<Vec<Ident>>, Spanned<ParamType>),
+    Var(Spanned<Vec<Ident>>, Spanned<ParamType>),
     Proc(ProcSig),
     Func(FuncSig),
 }

@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Debug, Display},
-    ops::{Add, Index, Range},
+    ops::{Add, AddAssign, Index, Range},
 };
 
 pub fn trim_ends(s: &str) -> &str {
@@ -33,6 +33,13 @@ impl Add for Span {
     }
 }
 
+impl AddAssign for Span {
+    fn add_assign(&mut self, rhs: Self) {
+        self.start = self.start.min(rhs.start);
+        self.end = self.end.max(rhs.end);
+    }
+}
+
 impl Index<Span> for str {
     type Output = str;
 
@@ -55,7 +62,9 @@ impl<T> Spannable for T where T: Debug + Clone {}
 
 impl<T> Copy for Spanned<T> where T: Spannable + Copy {}
 
+/// Definitely not an functor 😉
 impl<T: Spannable> Spanned<T> {
+    /// Totally not `fmap`
     pub fn map<U: Spannable>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
             span: self.span,

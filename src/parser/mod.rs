@@ -209,6 +209,26 @@ impl<'source> ParserState<'source> {
         Ok(items)
     }
 
+    fn repeat_sep_span<T: Debug + Clone>(
+        &mut self,
+        separator: impl TokenPred,
+        parser: impl Fn(&mut ParserState<'source>) -> SpanParseResult<T>,
+    ) -> SpanParseResult<Vec<Spanned<T>>> {
+        let mut items = Vec::new();
+        let first = parser(self)?;
+        let mut span = first.span;
+        items.push(first);
+
+        while self.is(separator.clone()) {
+            self.advance();
+            let res = parser(self)?;
+            span += res.span;
+            items.push(res);
+        }
+
+        Ok(items)
+    }
+
     /// Repeatedly apply an extension parser [ext] to the result of an initial parser [init].
     fn repeat_fold<T: Clone + Debug, P, I>(
         &mut self,
