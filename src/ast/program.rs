@@ -1,9 +1,5 @@
 use crate::{
-    ast::{
-        expr::{Expr, SpanExpr},
-        stmt::CompoundStmt,
-        Ident, UnspanIdent,
-    },
+    ast::{expr::SpanExpr, stmt::CompoundStmt, Ident, UnspanIdent},
     utils::{Span, Spanned},
 };
 
@@ -67,7 +63,7 @@ pub enum UnpackedStructuredType {
     },
     Record(FieldList),
     Set(OrdinalType),
-    File(Type),
+    File(Spanned<Type>),
 }
 
 #[derive(Clone, Debug)]
@@ -161,7 +157,7 @@ pub enum Param {
 
 #[derive(Clone, Debug)]
 pub enum ParamType {
-    TypeIdent(Ident),
+    TypeIdent(UnspanIdent),
     ArraySchema(Box<ArraySchema>),
 }
 

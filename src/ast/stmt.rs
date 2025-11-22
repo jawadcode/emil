@@ -91,6 +91,6 @@ pub enum ForDirection {
 
 #[derive(Debug, Clone)]
 pub struct Case {
-    pub labels: Vec<Expr>,
-    pub body: MaybeLabelledStmt,
+    pub labels: Spanned<Vec<SpanExpr>>,
+    pub body: Spanned<MaybeLabelledStmt>,
 }

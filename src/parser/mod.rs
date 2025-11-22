@@ -26,7 +26,7 @@ pub struct SyntaxError {
     pub got: Token,
 }
 
-pub type SpanParseResult<T: Clone + Debug> = Result<Spanned<T>, SyntaxError>;
+pub type SpanParseResult<T> = Result<Spanned<T>, SyntaxError>;
 
 pub type ParseResult<T> = Result<T, SyntaxError>;
 
@@ -226,7 +226,7 @@ impl<'source> ParserState<'source> {
             items.push(res);
         }
 
-        Ok(items)
+        Ok(Spanned { span, node: items })
     }
 
     /// Repeatedly apply an extension parser [ext] to the result of an initial parser [init].
@@ -247,7 +247,7 @@ impl<'source> ParserState<'source> {
             let ext = ext(self, result)?;
             result = Spanned {
                 span: lhs_span + ext.span,
-                node: ext,
+                node: ext.node,
             };
         }
 
@@ -256,7 +256,7 @@ impl<'source> ParserState<'source> {
 
     /// Constructs an error that consumes the next token.
     /// For use with [`Parser::peek`] or [`Parser::is`].
-    fn next_error<T: Clone + Debug>(&mut self, expected: &str) -> SpanParseResult<T> {
+    fn next_error<T: Clone + Debug>(&mut self, expected: &str) -> ParseResult<T> {
         let expected = expected.to_owned();
         let got = self.next()?;
         Err(SyntaxError { expected, got })

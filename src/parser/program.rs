@@ -1,5 +1,3 @@
-use std::num::NonZero;
-
 use crate::{
     ast::{
         expr::{Expr, UnaryOp, Var},
@@ -125,30 +123,6 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
 }
 
 fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
-    // match parser.peek() {
-    //     TokenKind::Ident => Ok(Type::Ordinal(OrdinalType::Identifier(
-    //         parser.advance_source(),
-    //     ))),
-    //     TokenKind::Packed => {
-    //         parser.advance();
-    //         unpacked_structured_type(parser).map(|ty| Type::Structured {
-    //             packed: true,
-    //             r#type: Box::new(ty),
-    //         })
-    //     }
-    //     TokenKind::Array | TokenKind::Record | TokenKind::Set | TokenKind::File => {
-    //         unpacked_structured_type(parser).map(|ty| Type::Structured {
-    //             packed: false,
-    //             r#type: Box::new(ty),
-    //         })
-    //     }
-    //     TokenKind::Caret | TokenKind::UpArrow => {
-    //         parser.advance();
-    //         let ty = parser.expect_source(TokenKind::Ident)?;
-    //         Ok(Type::Pointer(ty))
-    //     }
-    //     _ => parser.next_error("type"),
-    // }
     match parser.peek() {
         TokenKind::Ident => Ok(parser
             .advance_ident()
@@ -220,31 +194,43 @@ fn unpacked_structured_type<'source>(
 ) -> SpanParseResult<UnpackedStructuredType> {
     match parser.peek() {
         TokenKind::Array => {
-            parser.advance();
+            let start_span = parser.advance().span;
             parser.expect(TokenKind::LSquare)?;
-            let indices = parser.repeat_sep(TokenKind::Comma, ordinal_type)?;
+            let indices = parser.repeat_sep_span(TokenKind::Comma, ordinal_type)?;
             parser.expect(TokenKind::RSquare)?;
             parser.expect(TokenKind::Of)?;
             let elem = r#type(parser)?;
-            Ok(UnpackedStructuredType::Array { indices, elem })
+            Ok(Spanned {
+                span: start_span + elem.span,
+                node: UnpackedStructuredType::Array { indices, elem },
+            })
         }
         TokenKind::Record => {
-            parser.advance();
+            let start_span = parser.advance().span;
             let field_list = field_list(parser)?;
-            parser.expect(TokenKind::End)?;
-            Ok(UnpackedStructuredType::Record(field_list))
+            let end_span = parser.expect(TokenKind::End)?.span;
+            Ok(Spanned {
+                span: start_span + end_span,
+                node: UnpackedStructuredType::Record(field_list.node),
+            })
         }
         TokenKind::Set => {
-            parser.advance();
+            let start_span = parser.advance().span;
             parser.expect(TokenKind::Of)?;
             let elem = ordinal_type(parser)?;
-            Ok(UnpackedStructuredType::Set(elem))
+            Ok(Spanned {
+                span: start_span + elem.span,
+                node: UnpackedStructuredType::Set(elem.node),
+            })
         }
         TokenKind::File => {
-            parser.advance();
+            let start_span = parser.advance().span;
             parser.expect(TokenKind::Of)?;
             let of = r#type(parser)?;
-            Ok(UnpackedStructuredType::File(of))
+            Ok(Spanned {
+                span: start_span + of.span,
+                node: UnpackedStructuredType::File(of),
+            })
         }
         _ => parser.next_error("'array', 'record', 'set' or 'file'"),
     }
@@ -261,7 +247,6 @@ fn field_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Fie
                     span: names.span + r#type.span,
                     node: FixedFields { names, r#type },
                 })
-                // Ok((names, field_type))
             })?;
 
             let variant = if parser.is(TokenKind::Semicolon) {
@@ -286,10 +271,15 @@ fn field_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Fie
         }),
         _ => parser.next_error("field list"),
     }?;
-    if parser.is(TokenKind::Semicolon) {
-        parser.advance();
-    }
-    Ok(body)
+    let end_span = if parser.is(TokenKind::Semicolon) {
+        Some(parser.advance().span)
+    } else {
+        None
+    };
+    Ok(Spanned {
+        span: add_span_opt(body.span, end_span),
+        node: body.node,
+    })
 }
 
 fn variant_field<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<VariantField> {
@@ -368,7 +358,10 @@ fn proc_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Proc
         node: ProcDecl {
             sig: Spanned {
                 span: start_span + params.span,
-                node: ProcSig { name, params },
+                node: ProcSig {
+                    name,
+                    params: params.node,
+                },
             },
             post,
         },
@@ -376,33 +369,42 @@ fn proc_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Proc
 }
 
 fn func_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<FuncDecl> {
-    parser.advance();
-    let name = parser.expect_source(TokenKind::Ident)?;
+    let start_span = parser.advance().span;
+    let name = parser.ident()?;
     let params = if parser.is(TokenKind::LParen) {
         params(parser)?
     } else {
-        Vec::new()
+        empty_list()
     };
 
     match parser.peek() {
         TokenKind::Colon => {
             parser.advance();
-            let result = parser.expect_source(TokenKind::Ident)?;
-            parser.expect(TokenKind::Semicolon)?;
+            let result = parser.ident()?;
+            let decl_end = parser.expect(TokenKind::Semicolon)?.span;
             let post = post_sig(parser)?;
-            Ok(FuncDecl::Heading(
-                FuncSig {
-                    name,
-                    params,
-                    result,
-                },
-                post,
-            ))
+            Ok(Spanned {
+                span: start_span + post.span,
+                node: FuncDecl::Heading(
+                    Spanned {
+                        span: start_span + decl_end,
+                        node: FuncSig {
+                            name,
+                            params,
+                            result,
+                        },
+                    },
+                    post,
+                ),
+            })
         }
-        TokenKind::Semicolon if params.is_empty() => {
+        TokenKind::Semicolon if params.node.is_empty() => {
             parser.expect(TokenKind::Semicolon)?;
             let block = block(parser)?;
-            Ok(FuncDecl::Ident(&name, block))
+            Ok(Spanned {
+                span: start_span + block.span,
+                node: FuncDecl::Ident(name, block),
+            })
         }
         TokenKind::Semicolon => parser.next_error("':'"),
         _ => parser.next_error("colon or semicolon"),
@@ -435,7 +437,7 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
         TokenKind::Var => {
             let start_span = parser.advance().span;
             let params = ident_list(parser)?;
-            parser.expect_source(TokenKind::Colon)?;
+            parser.expect(TokenKind::Colon)?;
             let r#type = param_type(parser)?;
 
             Ok(Spanned {
@@ -444,24 +446,33 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
             })
         }
         TokenKind::Procedure => {
-            parser.advance();
-            let name = parser.expect_source(TokenKind::Ident)?;
+            let start_span = parser.advance().span;
+            let name = parser.ident()?;
             let params = params(parser)?;
 
-            Ok(Param::Proc(ProcSig { name, params }))
+            Ok(Spanned {
+                span: start_span + params.span,
+                node: Param::Proc(ProcSig {
+                    name,
+                    params: params.node,
+                }),
+            })
         }
         TokenKind::Function => {
-            parser.advance();
-            let name = parser.expect_source(TokenKind::Ident)?;
+            let start_span = parser.advance().span;
+            let name = parser.ident()?;
             let params = params(parser)?;
             parser.expect(TokenKind::Colon)?;
-            let result = parser.expect_source(TokenKind::Ident)?;
+            let result = parser.ident()?;
 
-            Ok(Param::Func(FuncSig {
-                name,
-                params,
-                result,
-            }))
+            Ok(Spanned {
+                span: start_span + result.span,
+                node: Param::Func(FuncSig {
+                    name,
+                    params,
+                    result,
+                }),
+            })
         }
         _ => parser.next_error("identifier, 'var', 'proc', 'func', 'packed' or 'array'"),
     }
@@ -469,53 +480,51 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
 
 fn param_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<ParamType> {
     match parser.peek() {
-        TokenKind::Ident => Ok(ParamType::TypeIdent(parser.advance_source())),
+        TokenKind::Ident => Ok(parser.advance_ident().map(ParamType::TypeIdent)),
         TokenKind::Packed => {
-            parser.advance();
+            let start_span = parser.advance().span;
             parser.expect(TokenKind::Array)?;
             parser.expect(TokenKind::LSquare)?;
             let index = index_type_spec(parser)?;
             parser.expect(TokenKind::RSquare)?;
             parser.expect(TokenKind::Of)?;
-            let elem = parser.expect_source(TokenKind::Ident)?;
+            let elem = parser.ident()?;
 
-            Ok(ParamType::ArraySchema(Box::new(ArraySchema::Packed {
-                index,
-                elem,
-            })))
+            Ok(Spanned {
+                span: start_span + elem.span,
+                node: ParamType::ArraySchema(Box::new(ArraySchema::Packed { index, elem })),
+            })
         }
         TokenKind::Array => {
-            parser.advance();
+            let start_span = parser.advance().span;
             parser.expect(TokenKind::LSquare)?;
-            let mut indices = Vec::new();
-            indices.push(index_type_spec(parser)?);
-            while parser.is(TokenKind::Semicolon) {
-                parser.advance();
-                indices.push(index_type_spec(parser)?);
-            }
+            let indices = parser.repeat_sep_span(TokenKind::Semicolon, index_type_spec)?;
             parser.expect(TokenKind::RSquare)?;
             parser.expect(TokenKind::Of)?;
             let elem = param_type(parser)?;
-            Ok(ParamType::ArraySchema(Box::new(ArraySchema::Unpacked {
-                indices,
-                elem,
-            })))
+            Ok(Spanned {
+                span: start_span + elem.span,
+                node: ParamType::ArraySchema(Box::new(ArraySchema::Unpacked { indices, elem })),
+            })
         }
         _ => parser.next_error("type identifier, 'array' or 'packed'"),
     }
 }
 
 fn index_type_spec<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<IndexTypeSpec> {
-    let lower = parser.expect_source(TokenKind::Ident)?;
+    let lower = parser.ident()?;
     parser.expect(TokenKind::Ellipsis)?;
-    let upper = parser.expect_source(TokenKind::Ident)?;
+    let upper = parser.ident()?;
     parser.expect(TokenKind::Colon)?;
-    let r#type = parser.expect_source(TokenKind::Ident)?;
+    let r#type = parser.ident()?;
 
-    Ok(IndexTypeSpec {
-        lower,
-        upper,
-        r#type,
+    Ok(Spanned {
+        span: lower.span + r#type.span,
+        node: IndexTypeSpec {
+            lower,
+            upper,
+            r#type,
+        },
     })
 }
 
@@ -525,27 +534,46 @@ fn ident_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec
 
 pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     Ok(match parser.peek() {
-        TokenKind::UIntLit => Expr::UIntLit(parse_unsigned_integer(parser.advance_source())),
-        TokenKind::URealLit => Expr::URealLit(parse_unsigned_real(parser.advance_source())),
-        TokenKind::StrLit => Expr::StrLit(trim_ends(&parser.advance_source())),
-        TokenKind::Ident => Expr::Var(Var::Plain(parser.advance_ident())),
+        TokenKind::UIntLit => parser
+            .advance_source()
+            .map(parse_unsigned_integer)
+            .map(Expr::UIntLit),
+        TokenKind::URealLit => parser
+            .advance_source()
+            .map(parse_unsigned_real)
+            .map(Expr::URealLit),
+        TokenKind::StrLit => parser
+            .advance_source()
+            .map(trim_ends)
+            .map(|s| Expr::StrLit(s.to_string())),
+        TokenKind::Ident => parser.advance_ident().map(Var::Plain).map(Expr::Var),
         // We can't make this recursive as only one plus/minus is allowed
         op @ TokenKind::Plus | op @ TokenKind::Minus => {
-            parser.advance();
+            let start_span = parser.advance().span;
             let op: UnaryOp = op.into();
             let operand = Box::new(match parser.peek() {
-                TokenKind::UIntLit => {
-                    Expr::UIntLit(parse_unsigned_integer(parser.advance_source()))
-                }
-                TokenKind::URealLit => Expr::URealLit(parse_unsigned_real(parser.advance_source())),
-                TokenKind::StrLit => Expr::StrLit(trim_ends(&parser.advance_source())),
-                TokenKind::Ident => Expr::Var(Var::Plain(parser.advance_source())),
+                TokenKind::UIntLit => parser
+                    .advance_source()
+                    .map(parse_unsigned_integer)
+                    .map(Expr::UIntLit),
+                TokenKind::URealLit => parser
+                    .advance_source()
+                    .map(parse_unsigned_real)
+                    .map(Expr::URealLit),
+                TokenKind::StrLit => parser
+                    .advance_source()
+                    .map(trim_ends)
+                    .map(|s| Expr::StrLit(s.to_string())),
+                TokenKind::Ident => parser.advance_ident().map(Var::Plain).map(Expr::Var),
                 _ => {
                     return parser
                         .next_error("unsigned integer literal, string literal or identifier")
                 }
             });
-            Expr::UnaryOp { op, operand }
+            Spanned {
+                span: start_span + operand.span,
+                node: Expr::UnaryOp { op, operand },
+            }
         }
         _ => return parser.next_error("numeric literal, string literal, identifier, '+' or '-'"),
     })

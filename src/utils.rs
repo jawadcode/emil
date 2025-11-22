@@ -63,7 +63,7 @@ impl<T> Spannable for T where T: Debug + Clone {}
 impl<T> Copy for Spanned<T> where T: Spannable + Copy {}
 
 /// Definitely not an functor 😉
-impl<T: Spannable> Spanned<T> {
+impl<T: Spannable + Debug + Clone> Spanned<T> {
     /// Totally not `fmap`
     pub fn map<U: Spannable>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
@@ -72,6 +72,7 @@ impl<T: Spannable> Spanned<T> {
         }
     }
 
+    #[allow(dead_code)]
     /// Totally not just `liftA2`
     pub fn merge<U: Spannable, V: Spannable>(
         self,

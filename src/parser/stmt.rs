@@ -6,7 +6,7 @@ use crate::{
         },
     },
     lexer::{parse_unsigned_integer, TokenKind},
-    parser::{add_span_opt, empty_list, expr::VAR_EXT_START, Builtin, ParseResult},
+    parser::{add_span_opt, empty_list, expr::VAR_EXT_START, Builtin},
     utils::Spanned,
 };
 
@@ -20,16 +20,17 @@ pub fn compound_stmt<'source>(parser: &mut ParserState<'source>) -> SpanParseRes
     let span_start = parser.expect(TokenKind::Begin)?.span;
     let stmts = stmt_seq(parser)?;
     let span_end = parser.expect(TokenKind::End)?.span;
+
     Ok(Spanned {
         span: span_start + span_end,
-        node: stmts,
+        node: stmts.node,
     })
 }
 
 fn stmt_seq<'source>(
     parser: &mut ParserState<'source>,
-) -> ParseResult<Vec<Spanned<MaybeLabelledStmt>>> {
-    parser.repeat_sep(TokenKind::Semicolon, maybe_labelled_stmt)
+) -> SpanParseResult<Vec<Spanned<MaybeLabelledStmt>>> {
+    parser.repeat_sep_span(TokenKind::Semicolon, maybe_labelled_stmt)
 }
 
 fn maybe_labelled_stmt<'source>(
@@ -77,49 +78,55 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> SpanParseR
     let name = parser.advance_ident();
     let peeked = parser.peek();
 
-    if name.node == parser.builtin_name(Builtin::Writeln) {
-        return Ok(Spanned {
-            span: name.span,
-            node: Stmt::WritelnCall(empty_list()),
-        });
-    } else if name.node == parser.builtin_name(Builtin::Readln) {
-        return Ok(Spanned {
-            span: name.span,
-            node: Stmt::ReadlnCall(empty_list()),
-        });
+    if peeked != TokenKind::LParen {
+        if name.node == parser.builtin_name(Builtin::Writeln) {
+            return Ok(Spanned {
+                span: name.span,
+                node: Stmt::WritelnCall(empty_list()),
+            });
+        } else if name.node == parser.builtin_name(Builtin::Readln) {
+            return Ok(Spanned {
+                span: name.span,
+                node: Stmt::ReadlnCall(empty_list()),
+            });
+        }
     }
 
     if peeked == TokenKind::Becomes {
         let var = name.map(Var::Plain);
         parser.advance();
         let value = expr(parser)?;
+
         Ok(Spanned {
             span: var.span + value.span,
             node: Stmt::Assign { var, value },
         })
     } else if peeked == TokenKind::LParen {
-        match parser.rodeo.resolve(&name.node) {
-            // We assume there must be at least one argument for writeln/readln as we're inside parens
-            "write" => write_params(parser).map(|params| Spanned {
-                span: name.span + params.span,
-                node: Stmt::WriteCall(params),
-            }),
-            "writeln" => write_params(parser).map(|params| Spanned {
+        if name.node == parser.builtin_name(Builtin::Writeln) {
+            write_params(parser).map(|params| Spanned {
                 span: name.span + params.span,
                 node: Stmt::WritelnCall(params),
-            }),
-            "read" => read_params(parser).map(|params| Spanned {
+            })
+        } else if name.node == parser.builtin_name(Builtin::Write) {
+            write_params(parser).map(|params| Spanned {
+                span: name.span + params.span,
+                node: Stmt::WriteCall(params),
+            })
+        } else if name.node == parser.builtin_name(Builtin::Readln) {
+            read_params(parser).map(|params| Spanned {
+                span: name.span + params.span,
+                node: Stmt::ReadlnCall(params),
+            })
+        } else if name.node == parser.builtin_name(Builtin::Read) {
+            read_params(parser).map(|params| Spanned {
                 span: name.span + params.span,
                 node: Stmt::ReadCall(params),
-            }),
-            "readln" => read_params(parser).map(|params| Spanned {
-                span: name.span + params.span,
-                node: Stmt::ReadCall(params),
-            }),
-            _ => params(parser).map(|params| Spanned {
+            })
+        } else {
+            params(parser).map(|params| Spanned {
                 span: name.span + params.span,
                 node: Stmt::ProcCall { name, params },
-            }),
+            })
         }
     } else if peeked == TokenKind::Semicolon {
         Ok(Spanned {
@@ -130,6 +137,7 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> SpanParseR
         let var = parser.repeat_fold(VAR_EXT_START, var_ext, |_| Ok(name.map(Var::Plain)))?;
         parser.expect(TokenKind::Becomes)?;
         let value = expr(parser)?;
+
         Ok(Spanned {
             span: var.span + value.span,
             node: Stmt::Assign { var, value },
@@ -153,6 +161,7 @@ fn write_params<'source>(
             } else {
                 None
             };
+
             Some(Spanned {
                 span: add_span_opt(colon_span, frac_digits.as_ref().map(|(span, _)| *span)),
                 node: WriteParamSpecs {
@@ -164,17 +173,20 @@ fn write_params<'source>(
         } else {
             None
         };
+
         let span = if let Some(ref specs) = specifiers {
             param.span + specs.span
         } else {
             param.span
         };
+
         Ok(Spanned {
             span,
             node: WriteParam { param, specifiers },
         })
     })?;
     let span_end = parser.expect(TokenKind::RParen)?.span;
+
     Ok(Spanned {
         span: span_start + span_end,
         node: params,
@@ -182,19 +194,30 @@ fn write_params<'source>(
 }
 
 fn read_params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<SpanVar>> {
-    parser.repeat_sep(TokenKind::Comma, var)
+    let start_span = parser.advance().span;
+    let params = parser.repeat_sep(TokenKind::Comma, var)?;
+    let end_span = parser.expect_source(TokenKind::RParen)?.span;
+
+    Ok(Spanned {
+        span: start_span + end_span,
+        node: params,
+    })
 }
 
 fn goto<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
+    let start_span = parser.advance().span;
     let label = parser
-        .expect_source(TokenKind::UIntLit)
-        .map(parse_unsigned_integer)?;
-    Ok(Stmt::Goto(label))
+        .expect_source(TokenKind::UIntLit)?
+        .map(parse_unsigned_integer);
+
+    Ok(Spanned {
+        span: start_span + label.span,
+        node: Stmt::Goto(label.node),
+    })
 }
 
 fn r#if<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
+    let start_span = parser.advance().span;
     let cond = expr(parser)?;
     parser.expect(TokenKind::Then)?;
     let then = maybe_labelled_stmt(parser)?;
@@ -204,69 +227,99 @@ fn r#if<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
     } else {
         None
     };
-    Ok(Stmt::If { cond, then, r#else })
+    let end_span = r#else.as_ref().map(|e| e.span);
+
+    Ok(Spanned {
+        span: add_span_opt(start_span, end_span),
+        node: Stmt::If { cond, then, r#else },
+    })
 }
 
 fn case<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
+    let start_span = parser.advance().span;
     let index = expr(parser)?;
     parser.expect(TokenKind::Of)?;
-    let cases = parser.repeat_sep(TokenKind::Semicolon, |parser| {
-        let labels = parser.repeat_sep(TokenKind::Comma, constexpr)?;
+    let cases = parser.repeat_sep_span(TokenKind::Semicolon, |parser| {
+        let labels = parser.repeat_sep_span(TokenKind::Comma, constexpr)?;
         parser.expect(TokenKind::Colon)?;
         let body = maybe_labelled_stmt(parser)?;
-        Ok(Case { labels, body })
+        Ok(Spanned {
+            span: labels.span + body.span,
+            node: Case { labels, body },
+        })
     })?;
     if parser.is(TokenKind::Semicolon) {
         parser.advance();
     }
-    parser.expect(TokenKind::End)?;
-    Ok(Stmt::Case { index, cases })
+    let end_span = parser.expect(TokenKind::End)?.span;
+
+    Ok(Spanned {
+        span: start_span + end_span,
+        node: Stmt::Case { index, cases },
+    })
 }
 
 fn r#while<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
+    let start_span = parser.advance().span;
     let cond = expr(parser)?;
     parser.expect(TokenKind::Do)?;
     let body = maybe_labelled_stmt(parser)?;
-    Ok(Stmt::While { cond, body })
+
+    Ok(Spanned {
+        span: start_span + body.span,
+        node: Stmt::While { cond, body },
+    })
 }
 
 fn repeat<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
+    let start_span = parser.advance().span;
     let body = stmt_seq(parser)?;
     parser.expect(TokenKind::Until)?;
     let cond = expr(parser)?;
-    Ok(Stmt::Repeat { body, cond })
+
+    Ok(Spanned {
+        span: start_span + cond.span,
+        node: Stmt::Repeat { body, cond },
+    })
 }
 
 fn r#for<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
-    let control_var = parser.expect_source(TokenKind::Ident)?;
+    let start_span = parser.advance().span;
+    let control_var = parser.ident()?;
     parser.expect(TokenKind::Becomes)?;
     let from = expr(parser)?;
-    let direction = match parser.peek() {
-        TokenKind::To => ForDirection::To,
-        TokenKind::DownTo => ForDirection::DownTo,
-        _ => return parser.next_error("'to' or 'downto'"),
+    let direction = {
+        let dir = match parser.peek() {
+            TokenKind::To => ForDirection::To,
+            TokenKind::DownTo => ForDirection::DownTo,
+            _ => return parser.next_error("'to' or 'downto'"),
+        };
+        parser.advance().map(|_| dir)
     };
-    parser.advance();
     let to = expr(parser)?;
     parser.expect(TokenKind::Do)?;
     let body = maybe_labelled_stmt(parser)?;
-    Ok(Stmt::For {
-        control_var,
-        from,
-        direction,
-        to,
-        body,
+
+    Ok(Spanned {
+        span: start_span + body.span,
+        node: Stmt::For {
+            control_var,
+            from,
+            direction,
+            to,
+            body,
+        },
     })
 }
 
 fn with<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
-    parser.advance();
-    let vars = parser.repeat_sep(TokenKind::Comma, var)?;
+    let start_span = parser.advance().span;
+    let vars = parser.repeat_sep_span(TokenKind::Comma, var)?;
     parser.expect(TokenKind::Do)?;
     let body = maybe_labelled_stmt(parser)?;
-    Ok(Stmt::With { vars, body })
+
+    Ok(Spanned {
+        span: start_span + body.span,
+        node: Stmt::With { vars, body },
+    })
 }
