@@ -23,7 +23,7 @@ pub fn expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr>
             let right = simple_expr(parser).map(Box::new)?;
 
             Ok(Spanned {
-                span: (&left).span + right.span,
+                span: left.span + right.span,
                 node: Expr::BinOp { op, left, right },
             })
         },

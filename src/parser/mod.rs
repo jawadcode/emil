@@ -185,7 +185,7 @@ impl<'source> ParserState<'source> {
         let mut span = (0..0).into();
         while on.clone().apply(self) {
             let parsed = parser(self)?;
-            span = span + parsed.span;
+            span += parsed.span;
             items.push(parsed);
         }
         Ok(Spanned { span, node: items })

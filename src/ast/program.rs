@@ -101,6 +101,7 @@ pub enum RoutineDecl {
     Func(FuncDecl),
 }
 
+#[allow(clippy::large_enum_variant)] // idc not introducing indirection here
 #[derive(Debug, Clone)]
 pub enum PostSig {
     Block(Block),

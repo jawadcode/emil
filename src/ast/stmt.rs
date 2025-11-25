@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        expr::{Expr, Params, SpanExpr, SpanVar},
+        expr::{Params, SpanExpr, SpanVar},
         Ident,
     },
     utils::{Span, Spanned},
