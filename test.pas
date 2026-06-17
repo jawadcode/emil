@@ -1,7 +1,8 @@
 program Test(Output);
 
-type
-   Mat3x3 = array [0..2] of array [0..2] of integer;
+const CounterStart = 0;
+
+type Mat3x3 = array [0..2] of array [0..2] of integer;
 
 var
    Thing   : Mat3x3;
@@ -19,7 +20,7 @@ procedure Goodbye; begin
 end;
 
 begin
-   Counter := 0;
+   Counter := CounterStart;
    
    for i := 0 to 2 do
       for j := 0 to 2 do begin

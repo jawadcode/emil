@@ -51,21 +51,17 @@ impl Index<Span> for str {
 /* A little bit of fun */
 
 #[derive(Debug, Clone)]
-pub struct Spanned<T: Spannable> {
+pub struct Spanned<T: Debug + Clone> {
     pub span: Span,
     pub node: T,
 }
 
-pub trait Spannable {}
+impl<T: Debug + Clone> Copy for Spanned<T> where T: Copy {}
 
-impl<T> Spannable for T where T: Debug + Clone {}
-
-impl<T> Copy for Spanned<T> where T: Spannable + Copy {}
-
-/// Definitely not an functor 😉
-impl<T: Spannable + Debug + Clone> Spanned<T> {
+/// Definitely not an applicative functor 😉
+impl<T: Debug + Clone> Spanned<T> {
     /// Totally not `fmap`
-    pub fn map<U: Spannable>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
+    pub fn map<U: Debug + Clone>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
             span: self.span,
             node: f(self.node),
@@ -74,7 +70,7 @@ impl<T: Spannable + Debug + Clone> Spanned<T> {
 
     #[allow(dead_code)]
     /// Totally not just `liftA2`
-    pub fn merge<U: Spannable, V: Spannable>(
+    pub fn merge<U: Debug + Clone, V: Debug + Clone>(
         self,
         other: Spanned<U>,
         f: impl FnOnce(T, U) -> V,
@@ -82,6 +78,13 @@ impl<T: Spannable + Debug + Clone> Spanned<T> {
         Spanned {
             span: self.span + other.span,
             node: f(self.node, other.node),
+        }
+    }
+
+    pub fn as_ref(&self) -> Spanned<&T> {
+        Spanned {
+            span: self.span,
+            node: &self.node,
         }
     }
 }
@@ -118,4 +121,13 @@ impl<T: Display> Display for DisplaySlice<'_, T> {
             }
         }
     }
+}
+
+/// The venerable `Arrow.(>>>)`
+pub fn then<A, B, C, F, G>(f: F, g: G) -> impl FnOnce(A) -> C
+where
+    F: FnOnce(A) -> B,
+    G: FnOnce(B) -> C,
+{
+    |x| g(f(x))
 }

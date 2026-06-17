@@ -23,7 +23,23 @@ pub struct Block {
 #[derive(Debug, Clone)]
 pub struct ConstDef {
     pub name: Ident,
-    pub value: SpanExpr,
+    pub value: Spanned<ConstExpr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum ConstExpr {
+    NumLitOrIdent {
+        is_pos: Option<bool>,
+        lit: ConstExprLit,
+    },
+    StrLit(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum ConstExprLit {
+    UIntLit(u64),
+    URealLit(f64),
+    Ident(UnspanIdent),
 }
 
 #[derive(Debug, Clone)]
@@ -51,7 +67,10 @@ pub enum Type {
 #[derive(Debug, Clone)]
 pub enum OrdinalType {
     Enumerated(Vec<Ident>),
-    Subrange { lower: SpanExpr, upper: SpanExpr },
+    Subrange {
+        lower: Spanned<ConstExpr>,
+        upper: Spanned<ConstExpr>,
+    },
     Identifier(UnspanIdent),
 }
 
@@ -91,7 +110,7 @@ pub struct VariantField {
 
 #[derive(Clone, Debug)]
 pub struct Variant {
-    pub case_labels: Spanned<Vec<SpanExpr>>,
+    pub case_labels: Spanned<Vec<Spanned<ConstExpr>>>,
     pub fields: Spanned<FieldList>,
 }
 

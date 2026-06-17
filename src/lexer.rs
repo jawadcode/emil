@@ -150,6 +150,7 @@ const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
     .required_mantissa_sign(true)
     .build_strict();
 
+// TODO: Panics with missing sign on `0.0`
 pub fn parse_unsigned_real(tok: &str) -> f64 {
     parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
         .unwrap()

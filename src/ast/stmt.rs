@@ -6,6 +6,8 @@ use crate::{
     utils::{Span, Spanned},
 };
 
+use super::program::ConstExpr;
+
 pub type CompoundStmt = Vec<Spanned<MaybeLabelledStmt>>;
 
 #[derive(Debug, Clone)]
@@ -91,6 +93,6 @@ pub enum ForDirection {
 
 #[derive(Debug, Clone)]
 pub struct Case {
-    pub labels: Spanned<Vec<SpanExpr>>,
+    pub labels: Spanned<Vec<Spanned<ConstExpr>>>,
     pub body: Spanned<MaybeLabelledStmt>,
 }

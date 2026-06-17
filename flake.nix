@@ -2,7 +2,7 @@
   description = "A pascal compiler, named after the legend Niklaus Emil Wirth";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -46,10 +46,17 @@
       packages.default = emil-crate;
       apps.default = flake-utils.lib.mkApp {drv = emil-crate;};
       devShells = let
-        emilDevShell = craneLib.devShell {
+        devShellOpts = {
           checks = self.checks.${system};
-          packages = with pkgs; [taplo lldb_19];
+          packages = with pkgs; [taplo lldb];
         };
+        emilDevShell =
+          (
+            if pkgs.stdenv.targetPlatform.isDarwin
+            then craneLib.devShell
+            else craneLib.devShell.override {mkShell = pkgs.mkShell.override {stdenv = pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;};}
+          )
+          devShellOpts;
       in {
         emil = emilDevShell;
         latex = pkgs.mkShell {

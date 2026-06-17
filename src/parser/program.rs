@@ -2,9 +2,10 @@ use crate::{
     ast::{
         expr::{Expr, UnaryOp, Var},
         program::{
-            ArraySchema, Block, ConstDef, FieldList, FixedFields, FuncDecl, FuncSig, IndexTypeSpec,
-            OrdinalType, Param, ParamType, PostSig, ProcDecl, ProcSig, Program, RoutineDecl, Type,
-            TypeDef, UnpackedStructuredType, VarDecl, Variant, VariantField,
+            ArraySchema, Block, ConstDef, ConstExpr, ConstExprLit, FieldList, FixedFields,
+            FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param, ParamType, PostSig, ProcDecl,
+            ProcSig, Program, RoutineDecl, Type, TypeDef, UnpackedStructuredType, VarDecl, Variant,
+            VariantField,
         },
         Ident,
     },
@@ -532,47 +533,66 @@ fn ident_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec
     parser.repeat_sep_span(TokenKind::Comma, ParserState::ident)
 }
 
-pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
-    Ok(match parser.peek() {
-        TokenKind::UIntLit => parser
+pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<ConstExpr> {
+    fn uintlit<'source>(
+        parser: &mut ParserState<'source>,
+        is_pos: Option<bool>,
+    ) -> Spanned<ConstExpr> {
+        parser
             .advance_source()
             .map(parse_unsigned_integer)
-            .map(Expr::UIntLit),
-        TokenKind::URealLit => parser
+            .map(|lit| ConstExpr::NumLitOrIdent {
+                is_pos,
+                lit: ConstExprLit::UIntLit(lit),
+            })
+    }
+
+    fn ureallit<'source>(
+        parser: &mut ParserState<'source>,
+        is_pos: Option<bool>,
+    ) -> Spanned<ConstExpr> {
+        parser
             .advance_source()
             .map(parse_unsigned_real)
-            .map(Expr::URealLit),
+            .map(|lit| ConstExpr::NumLitOrIdent {
+                is_pos,
+                lit: ConstExprLit::URealLit(lit),
+            })
+    }
+
+    fn ident<'source>(
+        parser: &mut ParserState<'source>,
+        is_pos: Option<bool>,
+    ) -> Spanned<ConstExpr> {
+        parser
+            .advance_ident()
+            .map(|ident| ConstExpr::NumLitOrIdent {
+                is_pos,
+                lit: ConstExprLit::Ident(ident),
+            })
+    }
+
+    Ok(match parser.peek() {
+        TokenKind::UIntLit => uintlit(parser, None),
+        TokenKind::URealLit => ureallit(parser, None),
         TokenKind::StrLit => parser
             .advance_source()
             .map(trim_ends)
-            .map(|s| Expr::StrLit(s.to_string())),
-        TokenKind::Ident => parser.advance_ident().map(Var::Plain).map(Expr::Var),
-        // We can't make this recursive as only one plus/minus is allowed
+            .map(str::to_string)
+            .map(ConstExpr::StrLit),
+        TokenKind::Ident => ident(parser, None),
         op @ TokenKind::Plus | op @ TokenKind::Minus => {
             let start_span = parser.advance().span;
             let op: UnaryOp = op.into();
-            let operand = Box::new(match parser.peek() {
-                TokenKind::UIntLit => parser
-                    .advance_source()
-                    .map(parse_unsigned_integer)
-                    .map(Expr::UIntLit),
-                TokenKind::URealLit => parser
-                    .advance_source()
-                    .map(parse_unsigned_real)
-                    .map(Expr::URealLit),
-                TokenKind::StrLit => parser
-                    .advance_source()
-                    .map(trim_ends)
-                    .map(|s| Expr::StrLit(s.to_string())),
-                TokenKind::Ident => parser.advance_ident().map(Var::Plain).map(Expr::Var),
+            let is_pos = op == UnaryOp::Identity;
+            match parser.peek() {
+                TokenKind::UIntLit => uintlit(parser, Some(is_pos)),
+                TokenKind::URealLit => ureallit(parser, Some(is_pos)),
+                TokenKind::Ident => ident(parser, Some(is_pos)),
                 _ => {
                     return parser
                         .next_error("unsigned integer literal, string literal or identifier")
                 }
-            });
-            Spanned {
-                span: start_span + operand.span,
-                node: Expr::UnaryOp { op, operand },
             }
         }
         _ => return parser.next_error("numeric literal, string literal, identifier, '+' or '-'"),

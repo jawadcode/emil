@@ -45,7 +45,7 @@ pub enum Var {
 
 pub type Params = Vec<SpanExpr>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnaryOp {
     Not,
     Identity,
@@ -63,7 +63,7 @@ impl From<TokenKind> for UnaryOp {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
     Mult,
     Quot,

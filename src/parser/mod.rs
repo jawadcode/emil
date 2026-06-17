@@ -77,6 +77,11 @@ impl<'source> ParserState<'source> {
         }
     }
 
+    /// ParserState has yee'd its last haw.
+    fn yeehaw(self) -> Rodeo {
+        self.rodeo
+    }
+
     /// Expects an identifier, extracts its source and then returns an interned identifier.
     fn ident(&mut self) -> SpanParseResult<UnspanIdent> {
         Ok(self
@@ -174,7 +179,7 @@ impl<'source> ParserState<'source> {
     ///
     /// # TODO
     ///
-    /// Ideally the [parser] would return [`ControlFlow`] so we can allow it to break out of the
+    /// Ideally the [parser] would return [`std::ops::ControlFlow`] so we can allow it to break out of the
     /// loop early.
     fn repeated<T: Clone + Debug>(
         &mut self,
@@ -255,7 +260,7 @@ impl<'source> ParserState<'source> {
     }
 
     /// Constructs an error that consumes the next token.
-    /// For use with [`Parser::peek`] or [`Parser::is`].
+    /// For use with [`ParserState::peek`] or [`ParserState::is`].
     fn next_error<T: Clone + Debug>(&mut self, expected: &str) -> ParseResult<T> {
         let expected = expected.to_owned();
         let got = self.next()?;
