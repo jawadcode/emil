@@ -1,6 +1,7 @@
 use std::{env, fs, process};
 
 use parser::{program::program, ParserState};
+use semantic_analysis::Analyser;
 
 mod ast;
 mod lexer;
@@ -21,7 +22,14 @@ fn main() {
     let mut parser = ParserState::new(&source_content);
 
     match program(&mut parser) {
-        Ok(program) => println!("result: {:?}", program.clone()),
+        Ok(program) => {
+            println!("Parse Result:\n{:?}", program.clone());
+            println!();
+            let result = Analyser::new(parser.yeehaw()).analyse_program(&program.node);
+            if let Err(err) = result {
+                eprintln!("Analyser failed with: {err:?}");
+            }
+        }
         Err(err) => {
             eprintln!("{err}");
             process::exit(1)

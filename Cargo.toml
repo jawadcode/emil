@@ -8,3 +8,5 @@ ariadne = "0.5"
 lasso = "0.7.3"
 lexical-core = { version = "1.0", features = [ "format" ] }
 logos = "0.15"
+strum = "0.28.0"
+strum_macros = "0.28.0"

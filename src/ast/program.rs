@@ -71,7 +71,7 @@ pub enum OrdinalType {
         lower: Spanned<ConstExpr>,
         upper: Spanned<ConstExpr>,
     },
-    Identifier(UnspanIdent),
+    Ident(UnspanIdent),
 }
 
 #[derive(Clone, Debug)]

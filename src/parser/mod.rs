@@ -78,7 +78,7 @@ impl<'source> ParserState<'source> {
     }
 
     /// ParserState has yee'd its last haw.
-    fn yeehaw(self) -> Rodeo {
+    pub fn yeehaw(self) -> Rodeo {
         self.rodeo
     }
 

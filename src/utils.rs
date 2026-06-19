@@ -48,6 +48,14 @@ impl Index<Span> for str {
     }
 }
 
+impl Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.start, f)?;
+        f.write_str("..")?;
+        Display::fmt(&self.end, f)
+    }
+}
+
 /* A little bit of fun */
 
 #[derive(Debug, Clone)]
@@ -60,6 +68,10 @@ impl<T: Debug + Clone> Copy for Spanned<T> where T: Copy {}
 
 /// Definitely not an applicative functor 😉
 impl<T: Debug + Clone> Spanned<T> {
+    pub fn get_node(self) -> T {
+        self.node
+    }
+
     /// Totally not `fmap`
     pub fn map<U: Debug + Clone>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned {
@@ -87,19 +99,36 @@ impl<T: Debug + Clone> Spanned<T> {
             node: &self.node,
         }
     }
+
+    pub fn fmt_many<'a, F>(
+        f: &mut std::fmt::Formatter,
+        things: &'a [Spanned<T>],
+        fmt_thing: F,
+        sep: &'static str,
+    ) -> std::fmt::Result
+    where
+        F: Fn(&mut std::fmt::Formatter, &'a T) -> std::fmt::Result,
+    {
+        match things {
+            [] => Ok(()),
+            [sole] => fmt_thing(f, &sole.node),
+            [first, rest @ ..] => {
+                fmt_thing(f, &first.node)?;
+                for x in rest {
+                    f.write_str(sep)?;
+                    fmt_thing(f, &x.node)?;
+                    f.write_str("@")?;
+                    Display::fmt(&x.span, f)?;
+                }
+                Ok(())
+            }
+        }
+    }
 }
 
 impl From<Span> for Range<usize> {
     fn from(value: Span) -> Self {
         value.start..value.end
-    }
-}
-
-impl Display for Span {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Debug::fmt(&self.start, f)?;
-        f.write_str("..")?;
-        Debug::fmt(&self.end, f)
     }
 }
 

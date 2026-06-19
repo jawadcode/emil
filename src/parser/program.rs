@@ -127,7 +127,7 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
     match parser.peek() {
         TokenKind::Ident => Ok(parser
             .advance_ident()
-            .map(|ident| Type::Ordinal(OrdinalType::Identifier(ident)))),
+            .map(|ident| Type::Ordinal(OrdinalType::Ident(ident)))),
         TokenKind::Packed => {
             let packed_span = parser.advance().span;
             unpacked_structured_type(parser).map(|ty| Spanned {
