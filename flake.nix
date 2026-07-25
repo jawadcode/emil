@@ -48,15 +48,9 @@
       devShells = let
         devShellOpts = {
           checks = self.checks.${system};
-          packages = with pkgs; [taplo lldb];
+          packages = with pkgs; [taplo lldb pasfmt];
         };
-        emilDevShell =
-          (
-            if pkgs.stdenv.targetPlatform.isDarwin
-            then craneLib.devShell
-            else craneLib.devShell.override {mkShell = pkgs.mkShell.override {stdenv = pkgs.stdenvAdapters.useMoldLinker pkgs.stdenv;};}
-          )
-          devShellOpts;
+        emilDevShell = craneLib.devShell devShellOpts;
       in {
         emil = emilDevShell;
         latex = pkgs.mkShell {
