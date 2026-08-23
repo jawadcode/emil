@@ -1,11 +1,11 @@
 use crate::{
     ast::{
-        expr::{Expr, UnaryOp, Var},
+        expr::UnaryOp,
         program::{
-            ArraySchema, Block, ConstDef, ConstExpr, ConstExprLit, FieldList, FixedFields,
-            FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param, ParamType, PostSig, ProcDecl,
-            ProcSig, Program, RoutineDecl, Type, TypeDef, UnpackedStructuredType, VarDecl, Variant,
-            VariantField,
+            ArraySchema, Block, ConstDef, ConstExpr, ConstExprLit, Directive, FieldList,
+            FixedFields, FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param, ParamType, PostSig,
+            ProcDecl, ProcSig, Program, RoutineDecl, SubrangeBound, SubrangeBoundLiteral, Type,
+            TypeDef, UnpackedStructuredType, VarDecl, Variant, VariantField,
         },
         Ident,
     },
@@ -14,7 +14,7 @@ use crate::{
     utils::{trim_ends, Spanned},
 };
 
-use super::{stmt::compound_stmt, ParserState, SpanParseResult};
+use super::{parse_label, stmt::compound_stmt, ParserState, SpanParseResult};
 
 pub fn program<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Program> {
     let start_span = parser.expect(TokenKind::Program)?.span;
@@ -47,7 +47,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
         let res = parser.repeat_sep(TokenKind::Comma, |parser| {
             parser
                 .expect_source(TokenKind::UIntLit)
-                .map(|num| num.map(parse_unsigned_integer))
+                .map(|num| num.map(parse_label))
         })?;
         let span_end = parser.expect(TokenKind::Semicolon)?.span;
         Spanned {
@@ -125,9 +125,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
 
 fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
     match parser.peek() {
-        TokenKind::Ident => Ok(parser
-            .advance_ident()
-            .map(|ident| Type::Ordinal(OrdinalType::Ident(ident)))),
+        TokenKind::Ident => Ok(parser.advance_ident().map(|ident| Type::Ident(ident))),
         TokenKind::Packed => {
             let packed_span = parser.advance().span;
             unpacked_structured_type(parser).map(|ty| Spanned {
@@ -161,12 +159,8 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
 
 fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<OrdinalType> {
     match parser.peek() {
-        TokenKind::Plus
-        | TokenKind::Minus
-        | TokenKind::UIntLit
-        | TokenKind::URealLit
-        | TokenKind::StrLit
-        | TokenKind::Ident => subrange_type(parser),
+        TokenKind::Ident => type_ident_or_subrange_type(parser),
+        TokenKind::Plus | TokenKind::Minus | TokenKind::UIntLit => subrange_type(parser),
         TokenKind::LParen => {
             let start_span = parser.advance().span;
             let values = ident_list(parser)?;
@@ -176,18 +170,70 @@ fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<O
                 node: OrdinalType::Enumerated(values.node),
             })
         }
-        _ => parser.next_error("ordinal type"),
+        _ => {
+            parser.next_error("ordinal type (identifier, unsigned integer literal, '+', '-', '(')")
+        }
+    }
+}
+
+fn type_ident_or_subrange_type<'source>(
+    parser: &mut ParserState<'source>,
+) -> SpanParseResult<OrdinalType> {
+    let ident = parser.advance_ident();
+    if parser.is(TokenKind::Ellipsis) {
+        parser.advance();
+        let lower = ident.map(|ident| SubrangeBound {
+            is_pos: None,
+            lit: SubrangeBoundLiteral::Ident(ident),
+        });
+        let upper = subrange_bound(parser)?;
+        Ok(Spanned {
+            span: lower.span + upper.span,
+            node: OrdinalType::Subrange { lower, upper },
+        })
+    } else {
+        Ok(ident.map(|ident| OrdinalType::Ident(ident)))
     }
 }
 
 fn subrange_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<OrdinalType> {
-    let lower = constexpr(parser)?;
+    let lower = subrange_bound(parser)?;
     parser.expect(TokenKind::Ellipsis)?;
-    let upper = constexpr(parser)?;
+    let upper = subrange_bound(parser)?;
     Ok(Spanned {
         span: lower.span + upper.span,
         node: OrdinalType::Subrange { lower, upper },
     })
+}
+
+fn subrange_bound<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<SubrangeBound> {
+    let mut is_pos = None;
+    if parser.is(TokenKind::Plus) {
+        let tok = parser.advance();
+        is_pos = Some(tok.map(|_| true));
+    } else if parser.is(TokenKind::Minus) {
+        let tok = parser.advance();
+        is_pos = Some(tok.map(|_| false));
+    }
+
+    let lit = match parser.peek() {
+        TokenKind::UIntLit => parser
+            .advance_source()
+            .map(parse_unsigned_integer)
+            .map(SubrangeBoundLiteral::UIntLit),
+        TokenKind::Ident => parser.advance_ident().map(SubrangeBoundLiteral::Ident),
+        _ => return parser.next_error("'+', '-', unsigned integer literal or identifier"),
+    };
+
+    if let Some(is_pos) = is_pos {
+        // Need to combine spans if `Some`
+        Ok(is_pos.merge(lit, |is_pos, lit| SubrangeBound {
+            is_pos: Some(is_pos),
+            lit,
+        }))
+    } else {
+        Ok(lit.map(|lit| SubrangeBound { is_pos: None, lit }))
+    }
 }
 
 fn unpacked_structured_type<'source>(
@@ -335,10 +381,22 @@ fn routine_decls<'source>(
 
 fn post_sig<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<PostSig> {
     match parser.peek() {
-        // TokenKind::Ident => Ok(PostSig::Directive(parser.advance_source().into())),
-        TokenKind::Ident => Ok(parser
-            .advance_source()
-            .map(|src| PostSig::Directive(src.into()))),
+        TokenKind::Ident => {
+            let directive = parser
+                .advance_source()
+                .map(|src| PostSig::Directive(src.into()));
+            if let PostSig::Directive(Directive::Unknown) = directive.node {
+                Err(super::SyntaxError {
+                    expected: "'forward' or 'external' directive".to_string(),
+                    got: Spanned {
+                        span: directive.span,
+                        node: TokenKind::Ident,
+                    },
+                })
+            } else {
+                Ok(directive)
+            }
+        }
         TokenKind::Begin => block(parser).map(|block| block.map(PostSig::Block)),
         _ => parser.next_error("'begin' or directive"),
     }
@@ -591,7 +649,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
                 TokenKind::Ident => ident(parser, Some(is_pos)),
                 _ => {
                     return parser
-                        .next_error("unsigned integer literal, string literal or identifier")
+                        .next_error("unsigned numeric literal, string literal or identifier")
                 }
             }
         }

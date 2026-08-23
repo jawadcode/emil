@@ -1,12 +1,14 @@
+#![feature(deref_patterns, iter_collect_into)]
+
 use std::{env, fs, process};
 
 use parser::{program::program, ParserState};
-use semantic_analysis::Analyser;
+use sema::Analyser;
 
 mod ast;
 mod lexer;
 mod parser;
-mod semantic_analysis;
+mod sema;
 mod utils;
 
 fn main() {
@@ -25,7 +27,7 @@ fn main() {
         Ok(program) => {
             println!("Parse Result:\n{:?}", program.clone());
             println!();
-            let result = Analyser::new(parser.yeehaw()).analyse_program(&program.node);
+            let result = Analyser::new(parser.yeehaw()).check_program(&program.node);
             if let Err(err) = result {
                 eprintln!("Analyser failed with: {err:?}");
             }

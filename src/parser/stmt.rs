@@ -12,6 +12,7 @@ use crate::{
 
 use super::{
     expr::{expr, params, var, var_ext},
+    parse_label,
     program::constexpr,
     ParserState, SpanParseResult,
 };
@@ -37,7 +38,7 @@ fn maybe_labelled_stmt<'source>(
     parser: &mut ParserState<'source>,
 ) -> SpanParseResult<MaybeLabelledStmt> {
     let label = if parser.is(TokenKind::UIntLit) {
-        let num = parser.advance_source().map(parse_unsigned_integer);
+        let num = parser.advance_source().map(parse_label);
         parser.expect(TokenKind::Colon)?;
         Some(num)
     } else {
@@ -206,9 +207,7 @@ fn read_params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Ve
 
 fn goto<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
     let start_span = parser.advance().span;
-    let label = parser
-        .expect_source(TokenKind::UIntLit)?
-        .map(parse_unsigned_integer);
+    let label = parser.expect_source(TokenKind::UIntLit)?.map(parse_label);
 
     Ok(Spanned {
         span: start_span + label.span,

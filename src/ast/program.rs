@@ -1,5 +1,5 @@
 use crate::{
-    ast::{expr::SpanExpr, stmt::CompoundStmt, Ident, UnspanIdent},
+    ast::{stmt::CompoundStmt, Ident, UnspanIdent},
     utils::{Span, Spanned},
 };
 
@@ -12,7 +12,7 @@ pub struct Program {
 
 #[derive(Debug, Clone)]
 pub struct Block {
-    pub label_decls: Spanned<Vec<Spanned<u64>>>,
+    pub label_decls: Spanned<Vec<Spanned<u16>>>,
     pub const_defs: Spanned<Vec<Spanned<ConstDef>>>,
     pub type_defs: Spanned<Vec<Spanned<TypeDef>>>,
     pub var_decls: Spanned<Vec<Spanned<VarDecl>>>,
@@ -62,15 +62,29 @@ pub enum Type {
         r#type: Box<Spanned<UnpackedStructuredType>>,
     },
     Pointer(UnspanIdent),
+    Ident(UnspanIdent),
 }
 
 #[derive(Debug, Clone)]
 pub enum OrdinalType {
     Enumerated(Vec<Ident>),
     Subrange {
-        lower: Spanned<ConstExpr>,
-        upper: Spanned<ConstExpr>,
+        lower: Spanned<SubrangeBound>,
+        upper: Spanned<SubrangeBound>,
     },
+    Ident(UnspanIdent),
+}
+
+// needs to be distinct from `ConstExpr` as this does not include real number literals
+#[derive(Debug, Clone)]
+pub struct SubrangeBound {
+    pub is_pos: Option<bool>,
+    pub lit: SubrangeBoundLiteral,
+}
+
+#[derive(Debug, Clone)]
+pub enum SubrangeBoundLiteral {
+    UIntLit(u64),
     Ident(UnspanIdent),
 }
 
@@ -136,7 +150,7 @@ pub struct ProcDecl {
 #[derive(Clone, Debug)]
 pub struct ProcSig {
     pub name: Ident,
-    /// params.is_empty() => procedure identification
+    /// params.is_empty() => procedure identification \/ nullary procedure
     /// otherwise         => procedure heading
     pub params: Vec<Spanned<Param>>,
 }
@@ -147,6 +161,26 @@ pub enum FuncDecl {
     Heading(Spanned<FuncSig>, Spanned<PostSig>),
 }
 
+impl FuncDecl {
+    pub fn get_name(&self) -> &Ident {
+        match self {
+            FuncDecl::Ident(name, _)
+            | FuncDecl::Heading(
+                Spanned {
+                    span: _,
+                    node:
+                        FuncSig {
+                            name,
+                            params: _,
+                            result: _,
+                        },
+                },
+                _,
+            ) => name,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FuncSig {
     pub name: Ident,
@@ -154,16 +188,35 @@ pub struct FuncSig {
     pub result: Ident,
 }
 
+impl FuncSig {
+    fn arity(&self) -> usize {
+        let mut count = 0;
+        for param in &self.params.node {
+            count += match &param.node {
+                Param::Value(names, _) => names.node.len(),
+                Param::Var(names, _) => names.node.len(),
+                Param::Proc(_) => 1,
+                Param::Func(_) => 1,
+            };
+        }
+        count
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Directive {
     Forward,
     External,
-    Unknown(Ident),
+    Unknown,
 }
 
 impl From<&str> for Directive {
     fn from(value: &str) -> Self {
-        todo!()
+        match value.to_lowercase().as_str() {
+            "forward" => Self::Forward,
+            "external" => Self::External,
+            _ => Self::Unknown,
+        }
     }
 }
 

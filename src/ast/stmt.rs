@@ -12,7 +12,7 @@ pub type CompoundStmt = Vec<Spanned<MaybeLabelledStmt>>;
 
 #[derive(Debug, Clone)]
 pub struct MaybeLabelledStmt {
-    pub label: Option<Spanned<u64>>,
+    pub label: Option<Spanned<u16>>,
     pub stmt: Box<SpanStmt>,
 }
 
@@ -37,7 +37,7 @@ pub enum Stmt {
         name: Ident,
         params: Spanned<Params>,
     },
-    Goto(u64),
+    Goto(u16),
     Compound(CompoundStmt),
     If {
         cond: SpanExpr,

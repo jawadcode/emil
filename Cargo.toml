@@ -5,8 +5,9 @@ edition = "2021"
 
 [dependencies]
 ariadne = "0.5"
-lasso = "0.7.3"
-lexical-core = { version = "1.0", features = [ "format" ] }
+indexmap = "2.14"
+lasso = "0.7"
+lexical-core = { version = "1.0", features = ["format"] }
 logos = "0.15"
-strum = "0.28.0"
-strum_macros = "0.28.0"
+slotmap = "1.1"
+strum = { version = "0.28", features = ["derive"] }

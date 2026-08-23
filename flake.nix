@@ -27,7 +27,7 @@
       craneLib =
         (crane.mkLib pkgs)
         .overrideToolchain
-        (pkgs.rust-bin.stable.latest.default.override
+        (pkgs.rust-bin.nightly.latest.default.override
           {extensions = ["rust-src" "rust-analyzer" "llvm-tools"];});
 
       commonArgs = {

@@ -1,5 +1,5 @@
 use std::{
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug, Display, Write},
     ops::{Add, AddAssign, Index, Range},
 };
 
@@ -7,7 +7,7 @@ pub fn trim_ends(s: &str) -> &str {
     &s[1..(s.len() - 1)]
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Span {
     pub start: usize,
     pub end: usize,
@@ -58,13 +58,41 @@ impl Display for Span {
 
 /* A little bit of fun */
 
-#[derive(Debug, Clone)]
-pub struct Spanned<T: Debug + Clone> {
+pub struct Spanned<T: Debug> {
     pub span: Span,
     pub node: T,
 }
 
+impl<T: Debug + Clone> Debug for Spanned<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        Debug::fmt(&self.node, f)?;
+        f.write_char('@')?;
+        Display::fmt(&self.span, f)
+    }
+}
+
+impl<T: Debug> Clone for Spanned<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Spanned {
+            span: self.span,
+            node: self.node.clone(),
+        }
+    }
+}
+
 impl<T: Debug + Clone> Copy for Spanned<T> where T: Copy {}
+
+impl<T: Debug + Clone> Spanned<&T> {
+    pub fn cloned(self) -> Spanned<T> {
+        Spanned {
+            span: self.span,
+            node: self.node.clone(),
+        }
+    }
+}
 
 /// Definitely not an applicative functor 😉
 impl<T: Debug + Clone> Spanned<T> {
@@ -100,23 +128,31 @@ impl<T: Debug + Clone> Spanned<T> {
         }
     }
 
-    pub fn fmt_many<'a, F>(
-        f: &mut std::fmt::Formatter,
+    pub fn as_mut(&mut self) -> Spanned<&mut T> {
+        Spanned {
+            span: self.span,
+            node: &mut self.node,
+        }
+    }
+
+    pub fn fmt_many<'a, F, Ctx>(
         things: &'a [Spanned<T>],
         fmt_thing: F,
+        f: &mut std::fmt::Formatter,
+        ctx: &'a Ctx,
         sep: &'static str,
     ) -> std::fmt::Result
     where
-        F: Fn(&mut std::fmt::Formatter, &'a T) -> std::fmt::Result,
+        F: Fn(&'a T, &mut std::fmt::Formatter, &'a Ctx) -> std::fmt::Result,
     {
         match things {
             [] => Ok(()),
-            [sole] => fmt_thing(f, &sole.node),
+            [sole] => fmt_thing(&sole.node, f, ctx),
             [first, rest @ ..] => {
-                fmt_thing(f, &first.node)?;
+                fmt_thing(&first.node, f, ctx)?;
                 for x in rest {
                     f.write_str(sep)?;
-                    fmt_thing(f, &x.node)?;
+                    fmt_thing(&x.node, f, ctx)?;
                     f.write_str("@")?;
                     Display::fmt(&x.span, f)?;
                 }

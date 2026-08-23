@@ -7,7 +7,7 @@ use lasso::Rodeo;
 
 use crate::{
     ast::{Ident, UnspanIdent},
-    lexer::{Lexer, Token, TokenKind},
+    lexer::{parse_unsigned_integer, Lexer, Token, TokenKind},
     utils::{Span, Spanned},
 };
 
@@ -89,6 +89,7 @@ impl<'source> ParserState<'source> {
             .map(|ident| self.rodeo.get_or_intern(ident.to_lowercase())))
     }
 
+    /// Unchecked version of [ParserState::ident]
     fn advance_ident(&mut self) -> Ident {
         self.advance_source()
             .map(|ident| self.rodeo.get_or_intern(ident.to_lowercase()))
@@ -187,13 +188,19 @@ impl<'source> ParserState<'source> {
         parser: impl Fn(&mut ParserState<'source>) -> SpanParseResult<T>,
     ) -> SpanParseResult<Vec<Spanned<T>>> {
         let mut items = Vec::new();
-        let mut span = (0..0).into();
+        let mut span: Option<Span> = None;
         while on.clone().apply(self) {
             let parsed = parser(self)?;
-            span += parsed.span;
+            match span {
+                Some(mut old_span) => old_span += parsed.span,
+                None => span = Some(parsed.span),
+            }
             items.push(parsed);
         }
-        Ok(Spanned { span, node: items })
+        Ok(Spanned {
+            span: span.unwrap_or_default(),
+            node: items,
+        })
     }
 
     /// Parses one or more of [parser], repeating based on the apperance of [separator].
@@ -304,4 +311,8 @@ fn add_span_opt(lhs: Span, rhs: Option<Span>) -> Span {
     } else {
         lhs
     }
+}
+
+fn parse_label(tok: &str) -> u16 {
+    parse_unsigned_integer(tok) as u16
 }
