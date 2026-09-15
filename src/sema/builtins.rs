@@ -3,7 +3,7 @@ use strum::{EnumIter, IntoStaticStr};
 
 use crate::ast::UnspanIdent;
 
-use super::context::DefPoint;
+use super::context::{Constant, DefPoint, TypeKind};
 
 pub trait Builtin: Into<&'static str> + Clone + Copy {
     const DEF_POINT_CONS: fn(Self) -> DefPoint;
@@ -23,6 +23,16 @@ pub enum BuiltinConst {
 
 impl Builtin for BuiltinConst {
     const DEF_POINT_CONS: fn(Self) -> DefPoint = DefPoint::BuiltinConst;
+}
+
+impl From<BuiltinConst> for Constant {
+    fn from(value: BuiltinConst) -> Self {
+        match value {
+            BuiltinConst::True => Constant::Bool(true),
+            BuiltinConst::False => Constant::Bool(false),
+            BuiltinConst::Maxint => Constant::Int(i64::MAX),
+        }
+    }
 }
 
 #[derive(Clone, Copy, EnumIter, IntoStaticStr)]

@@ -1,5 +1,3 @@
-#![feature(deref_patterns, iter_collect_into)]
-
 use std::{env, fs, process};
 
 use parser::{program::program, ParserState};

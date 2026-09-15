@@ -1,7 +1,7 @@
 use std::{cell::RefCell, fmt::Debug};
 
 use builtins::{Builtin, BuiltinConst, BuiltinFunc, BuiltinProc, BuiltinType, BuiltinVar};
-use context::{DefId, Scope, TypeId, TypingContext};
+use context::{DefId, OrdinalTypeId, Scope, TypeId, TypingContext};
 use lasso::Rodeo;
 use strum::IntoEnumIterator;
 
@@ -35,28 +35,50 @@ pub enum AnalysisError {
         name: UnspanIdent,
         at: Span,
     },
-    SubrangeBoundsMismatch {
+    SubrangeBoundsTypeMismatch {
         lower: TypeId,
         upper: TypeId,
+    },
+    SubrangeBoundsBackwards {
+        span: Span,
+        start_ord: i64,
+        end_ord: i64,
+    },
+    SubrangeHostTypeMismatch {
+        t1: TypeId,
+        t2: TypeId,
+        // Recover `host_type`s from `TypeId`s
+        origin: Span,
+    },
+    SubrangeIntervalsMismatch {
+        t1: TypeId,
+        t2: TypeId,
+        // Recover `lower`s and `upper`s from `TypeId`s
+        origin: Span,
     },
     // These two are generated for built-in lang constructs which have specific sets of rules about accepted types
     MismatchDef {
         got: DefId,
-        at: Span,
+        // Recover location of def (where applicable) from `DefPoint` at `got`
         expected: &'static str,
-        because: Span,
+        origin: Span,
     },
     MismatchType {
         got: TypeId,
         at: Span,
         expected: &'static str,
-        because: Span,
+        origin: Span,
     },
     TypeMismatch {
         got: TypeId,
         at: Span,
         expected: TypeId,
-        because: Span,
+        origin: Span,
+    },
+    IncompatibleTypes {
+        got: TypeId,
+        expected: TypeId,
+        origin: Span,
     },
     DuplicateDecl {
         name: UnspanIdent,
