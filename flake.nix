@@ -11,57 +11,52 @@
     crane.url = "github:ipetkov/crane";
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    flake-utils,
-    rust-overlay,
-    crane,
-    ...
-  }:
-    flake-utils.lib.eachDefaultSystem (system: let
-      overlays = [(import rust-overlay)];
-      pkgs = import nixpkgs {inherit system overlays;};
-      # inherit (pkgs) lib;
+  outputs = { self, nixpkgs, flake-utils, rust-overlay, crane, ... }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
+        # inherit (pkgs) lib;
 
-      craneLib =
-        (crane.mkLib pkgs)
-        .overrideToolchain
-        (pkgs.rust-bin.nightly.latest.default.override
-          {extensions = ["rust-src" "rust-analyzer" "llvm-tools"];});
+        craneLib =
+          (crane.mkLib pkgs).overrideToolchain
+            (pkgs.rust-bin.stable.latest.default.override
+              { extensions = [ "rust-src" "rust-analyzer" "llvm-tools" ]; });
 
-      commonArgs = {
-        src = craneLib.cleanCargoSource ./.;
-        strictDeps = true;
-        nativeBuildInputs = [];
-        buildInputs = [];
-      };
+        commonArgs = {
+          src = craneLib.cleanCargoSource ./.;
+          strictDeps = true;
+          nativeBuildInputs = [ ];
+          buildInputs = [ ];
+        };
 
-      emil-crate = craneLib.buildPackage (commonArgs
-        // {
+        emil-crate = craneLib.buildPackage (commonArgs // {
           cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         });
-    in {
-      checks = {emil-crate = emil-crate;};
-      packages.default = emil-crate;
-      apps.default = flake-utils.lib.mkApp {drv = emil-crate;};
-      devShells = let
-        devShellOpts = {
-          checks = self.checks.${system};
-          packages = with pkgs; [taplo lldb pasfmt];
-        };
-        emilDevShell = craneLib.devShell devShellOpts;
-      in {
-        emil = emilDevShell;
-        latex = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            (iosevka-bin.override {variant = "SS07";})
-            (texliveFull.withPackages (ps: [ps.plex ps.naive-ebnf]))
-            texlab
-          ];
-        };
+      in
+      {
+        checks = { emil-crate = emil-crate; };
+        packages.default = emil-crate;
+        apps.default = flake-utils.lib.mkApp { drv = emil-crate; };
+        devShells =
+          let
+            devShellOpts = {
+              checks = self.checks.${system};
+              packages = with pkgs; [ taplo lldb pasfmt ];
+            };
+            emilDevShell = craneLib.devShell devShellOpts;
+          in
+          {
+            emil = emilDevShell;
+            latex = pkgs.mkShell {
+              buildInputs = with pkgs; [
+                (iosevka-bin.override { variant = "SS07"; })
+                (texliveFull.withPackages (ps: [ ps.plex ps.naive-ebnf ]))
+                texlab
+              ];
+            };
 
-        default = emilDevShell;
-      };
-    });
+            default = emilDevShell;
+          };
+      });
 }
