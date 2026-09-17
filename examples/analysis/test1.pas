@@ -2,17 +2,26 @@ program Test(Output);
 
 const
   ExampleInteger = 0;
-
 type
-  ExampleType = integer;
-
+  ExampleType = Integer;
 var
   ExampleVariable: ExampleType;
 
-function Identity(x: integer): integer;
+procedure Printeger(int: Integer); forward;
+
+function Identity(elem: Integer): Integer;
+const
+  IdentityElement = 0;
 begin
-  Identity := x
+  Identity := elem + IdentityElement
+end;
+
+procedure Printeger;
+begin
+  (* Pretend that this actually does something *)
 end;
 
 begin
+  ExampleVariable := ExampleInteger + Identity(123);
+  Printeger(ExampleVariable);
 end.

@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     fmt::{self, Debug, Display, Write},
     ops::{Add, AddAssign, Index, Range},
 };
@@ -94,6 +95,13 @@ impl<T: Debug + Clone> Spanned<&T> {
     }
 }
 
+impl<T: Debug + Clone, E: Error> Spanned<Result<T, E>> {
+    pub fn transpose(self: Spanned<Result<T, E>>) -> Result<Spanned<T>, E> {
+        let Spanned { span, node } = self;
+        node.map(|node| Spanned { span, node })
+    }
+}
+
 /// Definitely not an applicative functor 😉
 impl<T: Debug + Clone> Spanned<T> {
     pub fn get_node(self) -> T {
@@ -108,7 +116,13 @@ impl<T: Debug + Clone> Spanned<T> {
         }
     }
 
-    #[allow(dead_code)]
+    pub fn map_span(self, f: impl FnOnce(Span) -> Span) -> Self {
+        Spanned {
+            span: f(self.span),
+            node: self.node,
+        }
+    }
+
     /// Totally not just `liftA2`
     pub fn merge<U: Debug + Clone, V: Debug + Clone>(
         self,

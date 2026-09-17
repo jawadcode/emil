@@ -18,14 +18,13 @@ use super::{
 use ast::program as p;
 use ast::program::{OrdinalType as AOrdTy, Type as ATy, UnpackedStructuredType as AUnpackStructTy};
 use lasso::{Rodeo, Spur};
-use DefPoint::UserDef;
 
 pub struct TypingContext {
     types: Vec<TypeKind>,
     defs: Vec<DefPoint>,
     strings: Rodeo,
     canonical_sets: HashMap<(OrdinalTypeId, bool), TypeId>,
-    pub scopes: Vec<Scope>,
+    scopes: Vec<Scope>,
     // This feels jank
     integer: OrdinalTypeId,
     real: TypeId,
@@ -122,6 +121,12 @@ pub struct Scope {
     idents: HashMap<UnspanIdent, DefId>,
 }
 
+impl Scope {
+    pub fn insert(&mut self, name: UnspanIdent, def: DefId) {
+        self.idents.insert(name, def);
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct DefId(usize);
 
@@ -129,25 +134,52 @@ pub struct DefId(usize);
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct FieldId(usize);
 
+impl From<FieldId> for DefId {
+    fn from(value: FieldId) -> Self {
+        DefId(value.0)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct EnumMemberId(usize);
+impl From<EnumMemberId> for DefId {
+    fn from(value: EnumMemberId) -> Self {
+        DefId(value.0)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ParamId(usize);
+impl From<ParamId> for DefId {
+    fn from(value: ParamId) -> Self {
+        DefId(value.0)
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ConformArrayBoundId(usize);
+impl From<ConformArrayBoundId> for DefId {
+    fn from(value: ConformArrayBoundId) -> Self {
+        DefId(value.0)
+    }
+}
 
 /// A `defining-point` as per the standard
+#[derive(Debug)]
 pub enum DefPoint {
     BuiltinConst(BuiltinConst),
     BuiltinType(BuiltinType),
     BuiltinVar(BuiltinVar),
     BuiltinProc(BuiltinProc),
     BuiltinFunc(BuiltinFunc),
-    UserDef { kind: DefKind, span: Span },
+    UserDef {
+        name: UnspanIdent,
+        kind: DefKind,
+        span: Span,
+    },
 }
 
+#[derive(Debug)]
 pub enum DefKind {
     ProgramParam,
     Const { r#type: TypeId, value: Constant },
@@ -164,40 +196,49 @@ pub enum DefKind {
     ConformArrayBound(OrdinalTypeId), /* conformant array bound */
 }
 
+#[derive(Debug, Clone)]
 pub enum ParamKind {
-    Value(Vec<TypeId>, ParamType),
-    Var(Vec<TypeId>, ParamType),
-    Proc(ProcSig),
-    Func(FuncSig),
+    Value(ParamType),
+    Var(ParamType),
+    Proc(Vec<ParamId>),
+    Func {
+        params: Vec<ParamId>,
+        result: TypeId,
+    },
 }
 
+#[derive(Debug, Clone)]
 pub enum ParamType {
     TypeIdent(TypeId),
     ArraySchema(ArraySchema),
 }
 
+#[derive(Debug, Clone)]
 pub enum ArraySchema {
     Packed { index: IndexTypeSpec, elem: TypeId },
     Unpacked { indices: Vec<IndexTypeSpec> },
 }
 
+#[derive(Debug, Clone)]
 pub struct IndexTypeSpec {
     lower: i64,
     upper: i64,
     host_type: OrdinalTypeId,
 }
 
+#[derive(Debug, Clone)]
 pub struct ProcSig {
-    params: Vec<ParamId>,
-    // so we can impl forward-declaration
-    has_body: bool,
+    pub params: Vec<ParamId>,
+    /// For the purposes of forward-declaration
+    pub has_body: bool,
 }
 
+#[derive(Debug, Clone)]
 pub struct FuncSig {
-    params: Vec<ParamId>,
-    result_type: TypeId,
-    // so we can impl forward-declaration
-    has_body: bool,
+    pub params: Vec<ParamId>,
+    pub result: TypeId,
+    /// For the purposes of forward-declaration
+    pub has_body: bool,
 }
 
 impl TypingContext {
@@ -246,7 +287,7 @@ impl TypingContext {
 
     // Instead of reserving a placeholder we just predict the TypeId using the length
     // of the arena, hopefully this doesn't come back to bite me :P
-    fn convert_type(&mut self, ty: Spanned<&ATy>) -> Result<TypeId, AnalysisError> {
+    pub fn convert_type(&mut self, ty: Spanned<&ATy>) -> Result<TypeId, AnalysisError> {
         match ty.node {
             ATy::Ordinal(ordinal_type) => self
                 .convert_ordinal_type(ordinal_type, ty.span)
@@ -298,7 +339,7 @@ impl TypingContext {
     ) -> AnalysisResult<OrdinalTypeId> {
         let enum_ty = TypeId(self.types.len());
         let members = members
-            .into_iter()
+            .iter()
             .enumerate()
             .map(|(i, member)| self.insert_enum_member(member.node, member.span, enum_ty, i as i64))
             .collect();
@@ -375,6 +416,7 @@ impl TypingContext {
                     DefPoint::UserDef {
                         kind: DefKind::Const { r#type, value },
                         span,
+                        ..
                     } => {
                         let ty = self.check_bound_ordinality(*r#type, *span, subr_span)?;
 
@@ -408,12 +450,12 @@ impl TypingContext {
                         ..
                     } => Ok((OrdinalTypeId(r#type.0), *ordinal)),
                     _ => {
-                        return Err(AnalysisError::MismatchDef {
+                        Err(AnalysisError::MismatchDef {
                             got: def,
                             // at: bound.span,
                             expected: Self::ORD_MSG,
                             origin: subr_span,
-                        });
+                        })
                     }
                 }
             }
@@ -434,14 +476,12 @@ impl TypingContext {
             | TypeKind::Integer
             | TypeKind::Boolean
             | TypeKind::Char => Ok(OrdinalTypeId(id)),
-            _ => {
-                return Err(AnalysisError::MismatchType {
-                    got: r#type,
-                    at: bound_span,
-                    expected: Self::ORD_MSG,
-                    origin: subr_span,
-                })
-            }
+            _ => Err(AnalysisError::MismatchType {
+                got: r#type,
+                at: bound_span,
+                expected: Self::ORD_MSG,
+                origin: subr_span,
+            }),
         }
     }
 
@@ -452,10 +492,10 @@ impl TypingContext {
     ) -> AnalysisResult<OrdinalTypeId> {
         let def = self.lookup(name, origin)?;
         match self.defs[def.0] {
-            DefPoint::BuiltinType(BuiltinType::Integer) => Ok(self.integer.into()),
-            DefPoint::BuiltinType(BuiltinType::Boolean) => Ok(self.boolean.into()),
-            DefPoint::BuiltinType(BuiltinType::Char) => Ok(self.char.into()),
-            UserDef {
+            DefPoint::BuiltinType(BuiltinType::Integer) => Ok(self.integer),
+            DefPoint::BuiltinType(BuiltinType::Boolean) => Ok(self.boolean),
+            DefPoint::BuiltinType(BuiltinType::Char) => Ok(self.char),
+            DefPoint::UserDef {
                 kind: DefKind::Type(r#type),
                 ..
             } => match self.types[r#type.0] {
@@ -518,7 +558,7 @@ impl TypingContext {
     fn convert_field_list(&mut self, fields: &p::FieldList) -> AnalysisResult<FieldList> {
         let (fixed_part, variant_part): (&[Spanned<p::FixedFields>], Option<&p::VariantField>) =
             match fields {
-                p::FieldList::FixedOnly(fixed) => (&fixed, None),
+                p::FieldList::FixedOnly(fixed) => (fixed, None),
                 p::FieldList::Both(fixed, variant) => (&fixed.node, Some(&variant.node)),
                 p::FieldList::VariantOnly(variant_field) => (&[], Some(variant_field)),
                 p::FieldList::Empty => (&[], None),
@@ -535,7 +575,7 @@ impl TypingContext {
                     .names
                     .node
                     .iter()
-                    .map(|name| self.insert_field(name.node, name.span, field_type, ty)),
+                    .map(|name| self.create_field(name.node, name.span, field_type, ty)),
             );
         }
 
@@ -591,7 +631,7 @@ impl TypingContext {
         })
     }
 
-    fn convert_constexpr(
+    pub fn convert_constexpr(
         &mut self,
         constexpr: Spanned<&p::ConstExpr>,
     ) -> AnalysisResult<(TypeId, Constant)> {
@@ -655,24 +695,6 @@ impl TypingContext {
                 self.types.push(kind);
                 TypeId(self.types.len() - 1)
             }
-        }
-    }
-
-    /// # Panics
-    ///
-    /// When passed a field, enum member, param, or conformant array bound it will panic as there are specialised
-    /// methods for those that return a specialisation of [`DefId`].
-    pub fn insert(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> DefId {
-        match kind {
-            DefKind::ProgramParam
-            | DefKind::Const { .. }
-            | DefKind::Type(_)
-            | DefKind::Var(_)
-            | DefKind::Label(_)
-            | DefKind::EnumMember { .. }
-            | DefKind::Proc(_)
-            | DefKind::Func(_) => DefId(self.insert_def(name, kind, span)),
-            _ => unreachable!(),
         }
     }
 
@@ -852,8 +874,7 @@ impl TypingContext {
                 unreachable!()
             };
             self.contains_file_type(r#type)
-        }) || variant.map_or(
-            false,
+        }) || variant.is_some_and(
             |VariantPart {
                  tag_type, variants, ..
              }| {
@@ -870,18 +891,41 @@ impl TypingContext {
         )
     }
 
-    pub fn insert_field(
+    /// # Panics
+    ///
+    /// When passed a field, enum member, param, or conformant array bound it will panic as there are specialised
+    /// methods for those that return a specialisation of [`DefId`].
+    pub fn create_def(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> DefId {
+        match kind {
+            DefKind::ProgramParam
+            | DefKind::Const { .. }
+            | DefKind::Type(_)
+            | DefKind::Var(_)
+            | DefKind::Label(_)
+            | DefKind::Proc(_)
+            | DefKind::Func(_) => DefId(self.create(name, kind, span)),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn insert_def(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> DefId {
+        let def = self.create_def(name, kind, span);
+        self.curr_scope_mut().insert(name, def);
+        def
+    }
+
+    fn create_field(
         &mut self,
         name: UnspanIdent,
         span: Span,
         record: TypeId,
         r#type: TypeId,
     ) -> FieldId {
-        let id = self.insert_def(name, DefKind::Field { record, r#type }, span);
+        let id = self.create(name, DefKind::Field { record, r#type }, span);
         FieldId(id)
     }
 
-    pub fn insert_enum_member(
+    fn insert_enum_member(
         &mut self,
         name: UnspanIdent,
         span: Span,
@@ -889,37 +933,53 @@ impl TypingContext {
         ordinal: i64,
     ) -> EnumMemberId {
         let id = self.insert_def(name, DefKind::EnumMember { r#type, ordinal }, span);
-        EnumMemberId(id)
+        EnumMemberId(id.0)
     }
 
-    pub fn insert_param(&mut self, name: UnspanIdent, span: Span, kind: ParamKind) -> ParamId {
-        let id = self.insert_def(name, DefKind::Param(kind), span);
+    pub fn create_param(&mut self, name: UnspanIdent, span: Span, kind: ParamKind) -> ParamId {
+        let id = self.create(name, DefKind::Param(kind), span);
         ParamId(id)
     }
 
-    pub fn insert_conform_array_bound(
+    // pub fn get_param(&self, param: ParamId) -> Spanned<(UnspanIdent, &ParamKind)> {
+    //     match &self.defs[param.0] {
+    //         DefPoint::UserDef {
+    //             name,
+    //             kind: DefKind::Param(kind),
+    //             span,
+    //         } => Spanned {
+    //             span: *span,
+    //             node: (*name, kind),
+    //         },
+    //         _ => unreachable!(),
+    //     }
+    // }
+
+    pub fn create_conform_array_bound(
         &mut self,
         name: UnspanIdent,
         span: Span,
         r#type: OrdinalTypeId,
     ) -> ConformArrayBoundId {
-        let id = self.insert_def(name, DefKind::ConformArrayBound(r#type), span);
+        let id = self.create(name, DefKind::ConformArrayBound(r#type), span);
         ConformArrayBoundId(id)
     }
 
-    fn insert_def(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> usize {
-        self.defs.push(DefPoint::UserDef { kind, span });
-        let id = self.defs.len() - 1;
-        self.curr_scope_mut().idents.insert(name, DefId(id));
-        id
+    fn create(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> usize {
+        self.defs.push(DefPoint::UserDef { name, kind, span });
+        self.defs.len() - 1
     }
 
-    pub fn lookup(&self, name: UnspanIdent, span: Span) -> AnalysisResult<DefId> {
+    pub fn insert_label(&mut self, label: Spanned<u16>) {
+        self.curr_scope_mut().labels.insert(label.node, label.span);
+    }
+
+    pub fn lookup(&self, name: UnspanIdent, at: Span) -> AnalysisResult<DefId> {
         self.scopes
             .iter()
             .rev()
             .find_map(|scope| scope.idents.get(&name))
-            .ok_or(AnalysisError::Unbound { name, at: span })
+            .ok_or(AnalysisError::Unbound { name, at })
             .cloned()
     }
 
@@ -946,7 +1006,7 @@ impl TypingContext {
     ) -> AnalysisResult<(TypeId, Constant)> {
         self.lookup(name, span)
             .and_then(|def_id| match &self.defs[def_id.0] {
-                DefPoint::BuiltinConst(bc) => Ok((self.builtin_const_type(*bc), (*bc).into())),
+                DefPoint::BuiltinConst(bc) => Ok(self.builtin_const(*bc)),
                 DefPoint::UserDef {
                     kind: DefKind::Const { r#type, value },
                     ..
@@ -959,12 +1019,23 @@ impl TypingContext {
             })
     }
 
-    fn builtin_const_type(&self, bc: BuiltinConst) -> TypeId {
-        match bc {
-            BuiltinConst::True | BuiltinConst::False => self.boolean,
-            BuiltinConst::Maxint => self.integer,
-        }
-        .into()
+    // fn builtin_const_type(&self, bc: BuiltinConst) -> TypeId {
+    //     match bc {
+    //         BuiltinConst::True | BuiltinConst::False => self.boolean,
+    //         BuiltinConst::Maxint => self.integer,
+    //     }
+    //     .into()
+    // }
+
+    fn builtin_const(&self, bc: BuiltinConst) -> (TypeId, Constant) {
+        let ty = self.builtin_type(bc.get_type());
+        let cnst = match bc {
+            BuiltinConst::True => Constant::Bool(true),
+            BuiltinConst::False => Constant::Bool(false),
+            BuiltinConst::Maxint => Constant::Int(i64::MAX),
+        };
+
+        (ty, cnst)
     }
 
     fn builtin_type(&self, bt: BuiltinType) -> TypeId {
@@ -977,6 +1048,14 @@ impl TypingContext {
         }
     }
 
+    pub fn enter_scope(&mut self) {
+        self.scopes.push(Scope::default())
+    }
+
+    pub fn exit_scope(&mut self) {
+        self.scopes.pop();
+    }
+
     pub fn curr_scope(&self) -> &Scope {
         self.scopes.last().expect("Expected at least one scope")
     }
@@ -985,7 +1064,36 @@ impl TypingContext {
         self.scopes.last_mut().expect("Expected at least one scope")
     }
 
+    pub fn get_def(&self, def: DefId) -> &DefPoint {
+        &self.defs[def.0]
+    }
+
+    /// Get the name of a definition.
+    ///
+    /// # Panics
+    ///
+    /// * Will panic if given a `def` which is not `UserDef`
+    pub fn get_def_name(&self, def: DefId) -> UnspanIdent {
+        match self.defs[def.0] {
+            DefPoint::UserDef { name, .. } => name,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn get_def_mut(&mut self, def: DefId) -> &mut DefPoint {
+        &mut self.defs[def.0]
+    }
+
     fn get_or_intern_string(&mut self, s: &str) -> StringId {
         StringId(self.strings.get_or_intern(s))
+    }
+
+    pub fn dump(&self, rodeo: &Rodeo) {
+        for (depth, scope) in self.scopes.iter().enumerate().skip(1) {
+            println!("\nScope #{depth}:");
+            for (name, def) in &scope.idents {
+                println!("    {:?}: {:?}", rodeo.resolve(name), self.defs[def.0]);
+            }
+        }
     }
 }

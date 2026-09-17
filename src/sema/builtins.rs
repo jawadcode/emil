@@ -3,7 +3,7 @@ use strum::{EnumIter, IntoStaticStr};
 
 use crate::ast::UnspanIdent;
 
-use super::context::{Constant, DefPoint, TypeKind};
+use super::context::{Constant, DefPoint};
 
 pub trait Builtin: Into<&'static str> + Clone + Copy {
     const DEF_POINT_CONS: fn(Self) -> DefPoint;
@@ -14,11 +14,22 @@ pub trait Builtin: Into<&'static str> + Clone + Copy {
     }
 }
 
-#[derive(Clone, Copy, EnumIter, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum BuiltinConst {
     True,   // : boolean
     False,  // : boolean
     Maxint, // : integer
+}
+
+impl BuiltinConst {
+    pub const fn get_type(self) -> BuiltinType {
+        match self {
+            BuiltinConst::True => BuiltinType::Boolean,
+            BuiltinConst::False => BuiltinType::Boolean,
+            BuiltinConst::Maxint => BuiltinType::Integer,
+        }
+    }
 }
 
 impl Builtin for BuiltinConst {
@@ -35,7 +46,8 @@ impl From<BuiltinConst> for Constant {
     }
 }
 
-#[derive(Clone, Copy, EnumIter, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum BuiltinType {
     Integer,
     Real,
@@ -48,13 +60,8 @@ impl Builtin for BuiltinType {
     const DEF_POINT_CONS: fn(Self) -> DefPoint = DefPoint::BuiltinType;
 }
 
-pub const BUILTIN_CONSTS: [(BuiltinConst, BuiltinType); 3] = [
-    (BuiltinConst::True, BuiltinType::Boolean),
-    (BuiltinConst::False, BuiltinType::Boolean),
-    (BuiltinConst::Maxint, BuiltinType::Integer),
-];
-
-#[derive(Clone, Copy, EnumIter, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum BuiltinVar {
     Input,  // : text
     Output, // : text
@@ -64,12 +71,8 @@ impl Builtin for BuiltinVar {
     const DEF_POINT_CONS: fn(Self) -> DefPoint = DefPoint::BuiltinVar;
 }
 
-pub const BUILTIN_VARS: [(BuiltinVar, BuiltinType); 2] = [
-    (BuiltinVar::Input, BuiltinType::Text),
-    (BuiltinVar::Output, BuiltinType::Text),
-];
-
-#[derive(Clone, Copy, EnumIter, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum BuiltinFunc {
     // function[T: integer | real] (n: T): T
     Abs,
@@ -111,7 +114,8 @@ impl Builtin for BuiltinProc {
     const DEF_POINT_CONS: fn(Self) -> DefPoint = DefPoint::BuiltinProc;
 }
 
-#[derive(Clone, Copy, EnumIter, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, EnumIter, IntoStaticStr)]
+#[strum(serialize_all = "lowercase")]
 pub enum BuiltinProc {
     // procedure (p: ^T, ...$case_constants?)
     New,
