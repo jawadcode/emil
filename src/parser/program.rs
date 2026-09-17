@@ -125,7 +125,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
 
 fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
     match parser.peek() {
-        TokenKind::Ident => Ok(parser.advance_ident().map(|ident| Type::Ident(ident))),
+        TokenKind::Ident => Ok(parser.advance_ident().map(Type::Ident)),
         TokenKind::Packed => {
             let packed_span = parser.advance().span;
             unpacked_structured_type(parser).map(|ty| Spanned {
@@ -192,7 +192,7 @@ fn type_ident_or_subrange_type<'source>(
             node: OrdinalType::Subrange { lower, upper },
         })
     } else {
-        Ok(ident.map(|ident| OrdinalType::Ident(ident)))
+        Ok(ident.map(OrdinalType::Ident))
     }
 }
 
@@ -384,21 +384,23 @@ fn post_sig<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<PostS
         TokenKind::Ident => {
             let directive = parser
                 .advance_source()
-                .map(|src| PostSig::Directive(src.into()));
-            if let PostSig::Directive(Directive::Unknown) = directive.node {
-                Err(super::SyntaxError {
+                .map(|src| src.parse().map(PostSig::Directive));
+
+            match directive.node {
+                Ok(d) => Ok(Spanned {
+                    span: directive.span,
+                    node: d,
+                }),
+                Err(_) => Err(super::SyntaxError {
                     expected: "'forward' or 'external' directive".to_string(),
                     got: Spanned {
                         span: directive.span,
                         node: TokenKind::Ident,
                     },
-                })
-            } else {
-                Ok(directive)
+                }),
             }
         }
-        TokenKind::Begin => block(parser).map(|block| block.map(PostSig::Block)),
-        _ => parser.next_error("'begin' or directive"),
+        _ => block(parser).map(|block| block.map(PostSig::Block)),
     }
 }
 
@@ -652,6 +654,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
                         .next_error("unsigned numeric literal, string literal or identifier")
                 }
             }
+            .map_span(|s| start_span + s)
         }
         _ => return parser.next_error("numeric literal, string literal, identifier, '+' or '-'"),
     })

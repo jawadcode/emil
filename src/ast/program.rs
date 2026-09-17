@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use crate::{
     ast::{stmt::CompoundStmt, Ident, UnspanIdent},
     utils::{Span, Spanned},
@@ -207,15 +209,17 @@ impl FuncSig {
 pub enum Directive {
     Forward,
     External,
-    Unknown,
 }
 
-impl From<&str> for Directive {
-    fn from(value: &str) -> Self {
-        match value.to_lowercase().as_str() {
-            "forward" => Self::Forward,
-            "external" => Self::External,
-            _ => Self::Unknown,
+impl FromStr for Directive {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let lower = s.to_lowercase();
+        match lower.as_str() {
+            "forward" => Ok(Self::Forward),
+            "external" => Ok(Self::External),
+            _ => Err(lower),
         }
     }
 }
