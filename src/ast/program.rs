@@ -30,10 +30,7 @@ pub struct ConstDef {
 
 #[derive(Debug, Clone)]
 pub enum ConstExpr {
-    NumLitOrIdent {
-        is_pos: Option<bool>,
-        lit: ConstExprLit,
-    },
+    NumLitOrIdent { is_pos: Option<bool>, lit: ConstExprLit },
     StrLit(String),
 }
 
@@ -59,10 +56,7 @@ pub struct VarDecl {
 #[derive(Debug, Clone)]
 pub enum Type {
     Ordinal(OrdinalType),
-    Structured {
-        packed: Option<Span>,
-        r#type: Box<Spanned<UnpackedStructuredType>>,
-    },
+    Structured { packed: Option<Span>, r#type: Box<Spanned<UnpackedStructuredType>> },
     Pointer(UnspanIdent),
     Ident(UnspanIdent),
 }
@@ -70,10 +64,7 @@ pub enum Type {
 #[derive(Debug, Clone)]
 pub enum OrdinalType {
     Enumerated(Vec<Ident>),
-    Subrange {
-        lower: Spanned<SubrangeBound>,
-        upper: Spanned<SubrangeBound>,
-    },
+    Subrange { lower: Spanned<SubrangeBound>, upper: Spanned<SubrangeBound> },
     Ident(UnspanIdent),
 }
 
@@ -92,10 +83,7 @@ pub enum SubrangeBoundLiteral {
 
 #[derive(Clone, Debug)]
 pub enum UnpackedStructuredType {
-    Array {
-        indices: Spanned<Vec<Spanned<OrdinalType>>>,
-        elem: Spanned<Type>,
-    },
+    Array { indices: Spanned<Vec<Spanned<OrdinalType>>>, elem: Spanned<Type> },
     Record(FieldList),
     Set(OrdinalType),
     File(Spanned<Type>),
@@ -168,15 +156,7 @@ impl FuncDecl {
         match self {
             FuncDecl::Ident(name, _)
             | FuncDecl::Heading(
-                Spanned {
-                    span: _,
-                    node:
-                        FuncSig {
-                            name,
-                            params: _,
-                            result: _,
-                        },
-                },
+                Spanned { span: _, node: FuncSig { name, params: _, result: _ } },
                 _,
             ) => name,
         }
@@ -240,14 +220,8 @@ pub enum ParamType {
 
 #[derive(Clone, Debug)]
 pub enum ArraySchema {
-    Packed {
-        index: Spanned<IndexTypeSpec>,
-        elem: Ident,
-    },
-    Unpacked {
-        indices: Spanned<Vec<Spanned<IndexTypeSpec>>>,
-        elem: Spanned<ParamType>,
-    },
+    Packed { index: Spanned<IndexTypeSpec>, elem: Ident },
+    Unpacked { indices: Spanned<Vec<Spanned<IndexTypeSpec>>>, elem: Spanned<ParamType> },
 }
 
 #[derive(Clone, Debug)]

@@ -22,10 +22,7 @@ pub fn expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr>
             let op = parser.advance().node.into();
             let right = simple_expr(parser).map(Box::new)?;
 
-            Ok(Spanned {
-                span: left.span + right.span,
-                node: Expr::BinOp { op, left, right },
-            })
+            Ok(Spanned { span: left.span + right.span, node: Expr::BinOp { op, left, right } })
         },
         simple_expr,
     )
@@ -47,18 +44,13 @@ fn simple_expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Ex
             let right = term(parser).map(Box::new)?;
             let right_span = right.span;
 
-            let binop = Spanned {
-                span: left_span + right_span,
-                node: Expr::BinOp { op, left, right },
-            };
+            let binop =
+                Spanned { span: left_span + right_span, node: Expr::BinOp { op, left, right } };
 
             match sign {
                 Some(op) => Ok(Spanned {
                     span: left_span + right_span,
-                    node: Expr::UnaryOp {
-                        op,
-                        operand: Box::new(binop),
-                    },
+                    node: Expr::UnaryOp { op, operand: Box::new(binop) },
                 }),
                 None => Ok(binop),
             }
@@ -69,22 +61,13 @@ fn simple_expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Ex
 
 fn term<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     parser.repeat_fold(
-        &[
-            TokenKind::Asterisk,
-            TokenKind::Slash,
-            TokenKind::Div,
-            TokenKind::Mod,
-            TokenKind::And,
-        ],
+        &[TokenKind::Asterisk, TokenKind::Slash, TokenKind::Div, TokenKind::Mod, TokenKind::And],
         |parser, left| {
             let left = Box::new(left);
             let op = parser.advance().node.into();
             let right = factor(parser).map(Box::new)?;
 
-            Ok(Spanned {
-                span: left.span + right.span,
-                node: Expr::BinOp { op, left, right },
-            })
+            Ok(Spanned { span: left.span + right.span, node: Expr::BinOp { op, left, right } })
         },
         factor,
     )
@@ -92,18 +75,15 @@ fn term<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
 
 fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     match parser.peek() {
-        TokenKind::UIntLit => Ok(parser
-            .advance_source()
-            .map(parse_unsigned_integer)
-            .map(Expr::UIntLit)),
-        TokenKind::URealLit => Ok(parser
-            .advance_source()
-            .map(parse_unsigned_real)
-            .map(Expr::URealLit)),
-        TokenKind::StrLit => Ok(parser
-            .advance_source()
-            .map(trim_ends)
-            .map(|s| Expr::StrLit(s.to_string()))),
+        TokenKind::UIntLit => {
+            Ok(parser.advance_source().map(parse_unsigned_integer).map(Expr::UIntLit))
+        }
+        TokenKind::URealLit => {
+            Ok(parser.advance_source().map(parse_unsigned_real).map(Expr::URealLit))
+        }
+        TokenKind::StrLit => {
+            Ok(parser.advance_source().map(trim_ends).map(|s| Expr::StrLit(s.to_string())))
+        }
         TokenKind::Nil => Ok(parser.advance_source().map(|_| Expr::Nil)),
         TokenKind::Ident => factor_ident(parser),
         TokenKind::LSquare => {
@@ -111,10 +91,7 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
             let elems = parser.repeat_sep(TokenKind::Comma, expr)?;
             let end_span = parser.expect(TokenKind::RSquare)?.span;
 
-            Ok(Spanned {
-                span: start_span + end_span,
-                node: Expr::Set(elems),
-            })
+            Ok(Spanned { span: start_span + end_span, node: Expr::Set(elems) })
         }
         TokenKind::Not => {
             let start_span = parser.advance().span;
@@ -122,10 +99,7 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
 
             Ok(Spanned {
                 span: start_span + operand.span,
-                node: Expr::UnaryOp {
-                    op: UnaryOp::Not,
-                    operand,
-                },
+                node: Expr::UnaryOp { op: UnaryOp::Not, operand },
             })
         }
         TokenKind::LParen => {
@@ -133,46 +107,29 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
             let expr = expr(parser)?;
             let end_span = parser.expect(TokenKind::RParen)?.span;
 
-            Ok(Spanned {
-                span: start_span + end_span,
-                node: expr.node,
-            })
+            Ok(Spanned { span: start_span + end_span, node: expr.node })
         }
         _ => parser.next_error("factor"),
     }
 }
 
-pub(super) const VAR_EXT_START: &[TokenKind] = &[
-    TokenKind::Caret,
-    TokenKind::UpArrow,
-    TokenKind::LSquare,
-    TokenKind::Dot,
-];
+pub(super) const VAR_EXT_START: &[TokenKind] =
+    &[TokenKind::Caret, TokenKind::UpArrow, TokenKind::LSquare, TokenKind::Dot];
 
 fn factor_ident<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     let ident = parser.advance_ident();
     Ok(if parser.is(VAR_EXT_START) {
-        parser
-            .repeat_fold(VAR_EXT_START, var_ext, |_| Ok(ident.map(Var::Plain)))?
-            .map(Expr::Var)
+        parser.repeat_fold(VAR_EXT_START, var_ext, |_| Ok(ident.map(Var::Plain)))?.map(Expr::Var)
     } else if parser.is(TokenKind::LParen) {
         let params = params(parser)?;
-        Spanned {
-            span: params.span,
-            node: Expr::FuncCall {
-                name: ident,
-                params,
-            },
-        }
+        Spanned { span: params.span, node: Expr::FuncCall { name: ident, params } }
     } else {
         ident.map(Var::Plain).map(Expr::Var)
     })
 }
 
 pub(super) fn var<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Var> {
-    parser.repeat_fold(VAR_EXT_START, var_ext, |parser| {
-        Ok(parser.advance_ident().map(Var::Plain))
-    })
+    parser.repeat_fold(VAR_EXT_START, var_ext, |parser| Ok(parser.advance_ident().map(Var::Plain)))
 }
 
 pub(super) fn var_ext<'source>(
@@ -182,10 +139,7 @@ pub(super) fn var_ext<'source>(
     match parser.peek() {
         TokenKind::Caret | TokenKind::UpArrow => {
             let end_span = parser.advance().span;
-            Ok(Spanned {
-                span: var.span + end_span,
-                node: Var::Ref(Box::new(var)),
-            })
+            Ok(Spanned { span: var.span + end_span, node: Var::Ref(Box::new(var)) })
         }
         TokenKind::LSquare => {
             let index_start_span = parser.advance().span;
@@ -196,10 +150,7 @@ pub(super) fn var_ext<'source>(
                 span: var.span + index_end_span,
                 node: Var::Indexed(
                     Box::new(var),
-                    Spanned {
-                        span: index_start_span + index_end_span,
-                        node: indices,
-                    },
+                    Spanned { span: index_start_span + index_end_span, node: indices },
                 ),
             })
         }
@@ -209,11 +160,7 @@ pub(super) fn var_ext<'source>(
 
             Ok(Spanned {
                 span: var.span + field.span,
-                node: Var::FieldAccess {
-                    record: Box::new(var),
-                    dot_span,
-                    field,
-                },
+                node: Var::FieldAccess { record: Box::new(var), dot_span, field },
             })
         }
         _ => parser.next_error("'^', '↑', '[' or '.'"),
@@ -225,8 +172,5 @@ pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> SpanParseRes
     let params = parser.repeat_sep(TokenKind::Comma, expr)?;
     let end_span = parser.expect(TokenKind::RParen)?.span;
 
-    Ok(Spanned {
-        span: start_span + end_span,
-        node: params,
-    })
+    Ok(Spanned { span: start_span + end_span, node: params })
 }

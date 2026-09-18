@@ -22,10 +22,7 @@ pub fn compound_stmt<'source>(parser: &mut ParserState<'source>) -> SpanParseRes
     let stmts = stmt_seq(parser)?;
     let span_end = parser.expect(TokenKind::End)?.span;
 
-    Ok(Spanned {
-        span: span_start + span_end,
-        node: stmts.node,
-    })
+    Ok(Spanned { span: span_start + span_end, node: stmts.node })
 }
 
 fn stmt_seq<'source>(
@@ -47,11 +44,7 @@ fn maybe_labelled_stmt<'source>(
     let stmt = Box::new(stmt(parser)?);
 
     Ok(Spanned {
-        span: if let Some(label) = label {
-            label.span + stmt.span
-        } else {
-            stmt.span
-        },
+        span: if let Some(label) = label { label.span + stmt.span } else { stmt.span },
         node: MaybeLabelledStmt { label, stmt },
     })
 }
@@ -81,15 +74,9 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> SpanParseR
 
     if peeked != TokenKind::LParen {
         if name.node == parser.builtin_name(Builtin::Writeln) {
-            return Ok(Spanned {
-                span: name.span,
-                node: Stmt::WritelnCall(empty_list()),
-            });
+            return Ok(Spanned { span: name.span, node: Stmt::WritelnCall(empty_list()) });
         } else if name.node == parser.builtin_name(Builtin::Readln) {
-            return Ok(Spanned {
-                span: name.span,
-                node: Stmt::ReadlnCall(empty_list()),
-            });
+            return Ok(Spanned { span: name.span, node: Stmt::ReadlnCall(empty_list()) });
         }
     }
 
@@ -98,10 +85,7 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> SpanParseR
         parser.advance();
         let value = expr(parser)?;
 
-        Ok(Spanned {
-            span: var.span + value.span,
-            node: Stmt::Assign { var, value },
-        })
+        Ok(Spanned { span: var.span + value.span, node: Stmt::Assign { var, value } })
     } else if peeked == TokenKind::LParen {
         if name.node == parser.builtin_name(Builtin::Writeln) {
             write_params(parser).map(|params| Spanned {
@@ -130,19 +114,13 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> SpanParseR
             })
         }
     } else if peeked == TokenKind::Semicolon {
-        Ok(Spanned {
-            span: (0..0).into(),
-            node: Stmt::Empty,
-        })
+        Ok(Spanned { span: (0..0).into(), node: Stmt::Empty })
     } else if VAR_EXT_START.contains(&peeked) {
         let var = parser.repeat_fold(VAR_EXT_START, var_ext, |_| Ok(name.map(Var::Plain)))?;
         parser.expect(TokenKind::Becomes)?;
         let value = expr(parser)?;
 
-        Ok(Spanned {
-            span: var.span + value.span,
-            node: Stmt::Assign { var, value },
-        })
+        Ok(Spanned { span: var.span + value.span, node: Stmt::Assign { var, value } })
     } else {
         parser.next_error("'^', '↑', '[', '.', ':=' or '('")
     }
@@ -165,33 +143,20 @@ fn write_params<'source>(
 
             Some(Spanned {
                 span: add_span_opt(colon_span, frac_digits.as_ref().map(|(span, _)| *span)),
-                node: WriteParamSpecs {
-                    colon_span,
-                    field_width,
-                    frac_digits,
-                },
+                node: WriteParamSpecs { colon_span, field_width, frac_digits },
             })
         } else {
             None
         };
 
-        let span = if let Some(ref specs) = specifiers {
-            param.span + specs.span
-        } else {
-            param.span
-        };
+        let span =
+            if let Some(ref specs) = specifiers { param.span + specs.span } else { param.span };
 
-        Ok(Spanned {
-            span,
-            node: WriteParam { param, specifiers },
-        })
+        Ok(Spanned { span, node: WriteParam { param, specifiers } })
     })?;
     let span_end = parser.expect(TokenKind::RParen)?.span;
 
-    Ok(Spanned {
-        span: span_start + span_end,
-        node: params,
-    })
+    Ok(Spanned { span: span_start + span_end, node: params })
 }
 
 fn read_params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<SpanVar>> {
@@ -199,20 +164,14 @@ fn read_params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Ve
     let params = parser.repeat_sep(TokenKind::Comma, var)?;
     let end_span = parser.expect_source(TokenKind::RParen)?.span;
 
-    Ok(Spanned {
-        span: start_span + end_span,
-        node: params,
-    })
+    Ok(Spanned { span: start_span + end_span, node: params })
 }
 
 fn goto<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
     let start_span = parser.advance().span;
     let label = parser.expect_source(TokenKind::UIntLit)?.map(parse_label);
 
-    Ok(Spanned {
-        span: start_span + label.span,
-        node: Stmt::Goto(label.node),
-    })
+    Ok(Spanned { span: start_span + label.span, node: Stmt::Goto(label.node) })
 }
 
 fn r#if<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
@@ -228,10 +187,7 @@ fn r#if<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
     };
     let end_span = r#else.as_ref().map(|e| e.span);
 
-    Ok(Spanned {
-        span: add_span_opt(start_span, end_span),
-        node: Stmt::If { cond, then, r#else },
-    })
+    Ok(Spanned { span: add_span_opt(start_span, end_span), node: Stmt::If { cond, then, r#else } })
 }
 
 fn case<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
@@ -242,20 +198,14 @@ fn case<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
         let labels = parser.repeat_sep_span(TokenKind::Comma, constexpr)?;
         parser.expect(TokenKind::Colon)?;
         let body = maybe_labelled_stmt(parser)?;
-        Ok(Spanned {
-            span: labels.span + body.span,
-            node: Case { labels, body },
-        })
+        Ok(Spanned { span: labels.span + body.span, node: Case { labels, body } })
     })?;
     if parser.is(TokenKind::Semicolon) {
         parser.advance();
     }
     let end_span = parser.expect(TokenKind::End)?.span;
 
-    Ok(Spanned {
-        span: start_span + end_span,
-        node: Stmt::Case { index, cases },
-    })
+    Ok(Spanned { span: start_span + end_span, node: Stmt::Case { index, cases } })
 }
 
 fn r#while<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
@@ -264,10 +214,7 @@ fn r#while<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> 
     parser.expect(TokenKind::Do)?;
     let body = maybe_labelled_stmt(parser)?;
 
-    Ok(Spanned {
-        span: start_span + body.span,
-        node: Stmt::While { cond, body },
-    })
+    Ok(Spanned { span: start_span + body.span, node: Stmt::While { cond, body } })
 }
 
 fn repeat<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
@@ -276,10 +223,7 @@ fn repeat<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
     parser.expect(TokenKind::Until)?;
     let cond = expr(parser)?;
 
-    Ok(Spanned {
-        span: start_span + cond.span,
-        node: Stmt::Repeat { body, cond },
-    })
+    Ok(Spanned { span: start_span + cond.span, node: Stmt::Repeat { body, cond } })
 }
 
 fn r#for<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
@@ -301,13 +245,7 @@ fn r#for<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
 
     Ok(Spanned {
         span: start_span + body.span,
-        node: Stmt::For {
-            control_var,
-            from,
-            direction,
-            to,
-            body,
-        },
+        node: Stmt::For { control_var, from, direction, to, body },
     })
 }
 
@@ -317,8 +255,5 @@ fn with<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Stmt> {
     parser.expect(TokenKind::Do)?;
     let body = maybe_labelled_stmt(parser)?;
 
-    Ok(Spanned {
-        span: start_span + body.span,
-        node: Stmt::With { vars, body },
-    })
+    Ok(Spanned { span: start_span + body.span, node: Stmt::With { vars, body } })
 }

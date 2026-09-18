@@ -31,29 +31,17 @@ pub fn program<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Pr
     let block = block(parser)?;
     let end_span = parser.expect(TokenKind::Dot)?.span;
 
-    Ok(Spanned {
-        span: start_span + end_span,
-        node: Program {
-            name,
-            params,
-            block,
-        },
-    })
+    Ok(Spanned { span: start_span + end_span, node: Program { name, params, block } })
 }
 
 fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
     let label_decls = if parser.is(TokenKind::Label) {
         let span_start = parser.advance().span;
         let res = parser.repeat_sep(TokenKind::Comma, |parser| {
-            parser
-                .expect_source(TokenKind::UIntLit)
-                .map(|num| num.map(parse_label))
+            parser.expect_source(TokenKind::UIntLit).map(|num| num.map(parse_label))
         })?;
         let span_end = parser.expect(TokenKind::Semicolon)?.span;
-        Spanned {
-            span: span_start + span_end,
-            node: res,
-        }
+        Spanned { span: span_start + span_end, node: res }
     } else {
         empty_list()
     };
@@ -65,10 +53,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
             parser.expect(TokenKind::Eq)?;
             let value = constexpr(parser)?;
             let span_end = parser.expect(TokenKind::Semicolon)?.span;
-            Ok(Spanned {
-                span: name.span + span_end,
-                node: ConstDef { name, value },
-            })
+            Ok(Spanned { span: name.span + span_end, node: ConstDef { name, value } })
         })?
     } else {
         empty_list()
@@ -81,10 +66,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
             parser.expect(TokenKind::Eq)?;
             let def = r#type(parser)?;
             let span_end = parser.expect(TokenKind::Semicolon)?.span;
-            Ok(Spanned {
-                span: name.span + span_end,
-                node: TypeDef { name, def },
-            })
+            Ok(Spanned { span: name.span + span_end, node: TypeDef { name, def } })
         })?
     } else {
         empty_list()
@@ -97,10 +79,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
             parser.expect(TokenKind::Colon)?;
             let r#type = r#type(parser)?;
             let span_end = parser.expect(TokenKind::Semicolon)?.span;
-            Ok(Spanned {
-                span: names.span + span_end,
-                node: VarDecl { names, r#type },
-            })
+            Ok(Spanned { span: names.span + span_end, node: VarDecl { names, r#type } })
         })?
     } else {
         empty_list()
@@ -112,14 +91,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
 
     Ok(Spanned {
         span: label_decls.span + stmts.span,
-        node: Block {
-            label_decls,
-            const_defs,
-            type_defs,
-            var_decls,
-            routine_decls,
-            stmts,
-        },
+        node: Block { label_decls, const_defs, type_defs, var_decls, routine_decls, stmts },
     })
 }
 
@@ -130,28 +102,19 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
             let packed_span = parser.advance().span;
             unpacked_structured_type(parser).map(|ty| Spanned {
                 span: packed_span + ty.span,
-                node: Type::Structured {
-                    packed: Some(packed_span),
-                    r#type: Box::new(ty),
-                },
+                node: Type::Structured { packed: Some(packed_span), r#type: Box::new(ty) },
             })
         }
         TokenKind::Array | TokenKind::Record | TokenKind::Set | TokenKind::File => {
             unpacked_structured_type(parser).map(|ty| Spanned {
                 span: ty.span,
-                node: Type::Structured {
-                    packed: None,
-                    r#type: Box::new(ty),
-                },
+                node: Type::Structured { packed: None, r#type: Box::new(ty) },
             })
         }
         TokenKind::Caret | TokenKind::UpArrow => {
             let start_span = parser.advance().span;
             let ty = parser.ident()?;
-            Ok(Spanned {
-                span: start_span + ty.span,
-                node: Type::Pointer(ty.node),
-            })
+            Ok(Spanned { span: start_span + ty.span, node: Type::Pointer(ty.node) })
         }
         _ => parser.next_error("type"),
     }
@@ -165,10 +128,7 @@ fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<O
             let start_span = parser.advance().span;
             let values = ident_list(parser)?;
             let end_span = parser.expect(TokenKind::RParen)?.span;
-            Ok(Spanned {
-                span: start_span + end_span,
-                node: OrdinalType::Enumerated(values.node),
-            })
+            Ok(Spanned { span: start_span + end_span, node: OrdinalType::Enumerated(values.node) })
         }
         _ => {
             parser.next_error("ordinal type (identifier, unsigned integer literal, '+', '-', '(')")
@@ -182,15 +142,10 @@ fn type_ident_or_subrange_type<'source>(
     let ident = parser.advance_ident();
     if parser.is(TokenKind::Ellipsis) {
         parser.advance();
-        let lower = ident.map(|ident| SubrangeBound {
-            is_pos: None,
-            lit: SubrangeBoundLiteral::Ident(ident),
-        });
+        let lower = ident
+            .map(|ident| SubrangeBound { is_pos: None, lit: SubrangeBoundLiteral::Ident(ident) });
         let upper = subrange_bound(parser)?;
-        Ok(Spanned {
-            span: lower.span + upper.span,
-            node: OrdinalType::Subrange { lower, upper },
-        })
+        Ok(Spanned { span: lower.span + upper.span, node: OrdinalType::Subrange { lower, upper } })
     } else {
         Ok(ident.map(OrdinalType::Ident))
     }
@@ -200,10 +155,7 @@ fn subrange_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<
     let lower = subrange_bound(parser)?;
     parser.expect(TokenKind::Ellipsis)?;
     let upper = subrange_bound(parser)?;
-    Ok(Spanned {
-        span: lower.span + upper.span,
-        node: OrdinalType::Subrange { lower, upper },
-    })
+    Ok(Spanned { span: lower.span + upper.span, node: OrdinalType::Subrange { lower, upper } })
 }
 
 fn subrange_bound<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<SubrangeBound> {
@@ -217,20 +169,16 @@ fn subrange_bound<'source>(parser: &mut ParserState<'source>) -> SpanParseResult
     }
 
     let lit = match parser.peek() {
-        TokenKind::UIntLit => parser
-            .advance_source()
-            .map(parse_unsigned_integer)
-            .map(SubrangeBoundLiteral::UIntLit),
+        TokenKind::UIntLit => {
+            parser.advance_source().map(parse_unsigned_integer).map(SubrangeBoundLiteral::UIntLit)
+        }
         TokenKind::Ident => parser.advance_ident().map(SubrangeBoundLiteral::Ident),
         _ => return parser.next_error("'+', '-', unsigned integer literal or identifier"),
     };
 
     if let Some(is_pos) = is_pos {
         // Need to combine spans if `Some`
-        Ok(is_pos.merge(lit, |is_pos, lit| SubrangeBound {
-            is_pos: Some(is_pos),
-            lit,
-        }))
+        Ok(is_pos.merge(lit, |is_pos, lit| SubrangeBound { is_pos: Some(is_pos), lit }))
     } else {
         Ok(lit.map(|lit| SubrangeBound { is_pos: None, lit }))
     }
@@ -274,10 +222,7 @@ fn unpacked_structured_type<'source>(
             let start_span = parser.advance().span;
             parser.expect(TokenKind::Of)?;
             let of = r#type(parser)?;
-            Ok(Spanned {
-                span: start_span + of.span,
-                node: UnpackedStructuredType::File(of),
-            })
+            Ok(Spanned { span: start_span + of.span, node: UnpackedStructuredType::File(of) })
         }
         _ => parser.next_error("'array', 'record', 'set' or 'file'"),
     }
@@ -290,10 +235,7 @@ fn field_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Fie
                 let names = ident_list(parser)?;
                 parser.expect(TokenKind::Semicolon)?;
                 let r#type = r#type(parser)?;
-                Ok(Spanned {
-                    span: names.span + r#type.span,
-                    node: FixedFields { names, r#type },
-                })
+                Ok(Spanned { span: names.span + r#type.span, node: FixedFields { names, r#type } })
             })?;
 
             let variant = if parser.is(TokenKind::Semicolon) {
@@ -312,21 +254,11 @@ fn field_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Fie
             }
         }
         TokenKind::Case => variant_field(parser).map(|field| field.map(FieldList::VariantOnly)),
-        TokenKind::End => Ok(Spanned {
-            span: (0..0).into(),
-            node: FieldList::Empty,
-        }),
+        TokenKind::End => Ok(Spanned { span: (0..0).into(), node: FieldList::Empty }),
         _ => parser.next_error("field list"),
     }?;
-    let end_span = if parser.is(TokenKind::Semicolon) {
-        Some(parser.advance().span)
-    } else {
-        None
-    };
-    Ok(Spanned {
-        span: add_span_opt(body.span, end_span),
-        node: body.node,
-    })
+    let end_span = if parser.is(TokenKind::Semicolon) { Some(parser.advance().span) } else { None };
+    Ok(Spanned { span: add_span_opt(body.span, end_span), node: body.node })
 }
 
 fn variant_field<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<VariantField> {
@@ -344,21 +276,11 @@ fn variant_field<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<
         let case_labels = parser.repeat_sep_span(TokenKind::Comma, constexpr)?;
         parser.expect(TokenKind::Colon)?;
         let fields = field_list(parser)?;
-        Ok(Spanned {
-            span: case_labels.span + fields.span,
-            node: Variant {
-                case_labels,
-                fields,
-            },
-        })
+        Ok(Spanned { span: case_labels.span + fields.span, node: Variant { case_labels, fields } })
     })?;
     Ok(Spanned {
         span: start_span + variants.span,
-        node: VariantField {
-            tag_field,
-            tag_type,
-            variants,
-        },
+        node: VariantField { tag_field, tag_type, variants },
     })
 }
 
@@ -372,31 +294,20 @@ fn routine_decls<'source>(
             _ => unreachable!(),
         };
         let end_span = parser.expect(TokenKind::Semicolon)?.span;
-        Ok(Spanned {
-            span: routine_decl.span + end_span,
-            node: routine_decl.node,
-        })
+        Ok(Spanned { span: routine_decl.span + end_span, node: routine_decl.node })
     })
 }
 
 fn post_sig<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<PostSig> {
     match parser.peek() {
         TokenKind::Ident => {
-            let directive = parser
-                .advance_source()
-                .map(|src| src.parse().map(PostSig::Directive));
+            let directive = parser.advance_source().map(|src| src.parse().map(PostSig::Directive));
 
             match directive.node {
-                Ok(d) => Ok(Spanned {
-                    span: directive.span,
-                    node: d,
-                }),
+                Ok(d) => Ok(Spanned { span: directive.span, node: d }),
                 Err(_) => Err(super::SyntaxError {
                     expected: "'forward' or 'external' directive".to_string(),
-                    got: Spanned {
-                        span: directive.span,
-                        node: TokenKind::Ident,
-                    },
+                    got: Spanned { span: directive.span, node: TokenKind::Ident },
                 }),
             }
         }
@@ -407,11 +318,7 @@ fn post_sig<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<PostS
 fn proc_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<ProcDecl> {
     let start_span = parser.advance().span;
     let name = parser.ident()?;
-    let params = if parser.is(TokenKind::LParen) {
-        params(parser)?
-    } else {
-        empty_list()
-    };
+    let params = if parser.is(TokenKind::LParen) { params(parser)? } else { empty_list() };
     parser.expect(TokenKind::Semicolon)?;
     let post = post_sig(parser)?;
     Ok(Spanned {
@@ -419,10 +326,7 @@ fn proc_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Proc
         node: ProcDecl {
             sig: Spanned {
                 span: start_span + params.span,
-                node: ProcSig {
-                    name,
-                    params: params.node,
-                },
+                node: ProcSig { name, params: params.node },
             },
             post,
         },
@@ -432,11 +336,7 @@ fn proc_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Proc
 fn func_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<FuncDecl> {
     let start_span = parser.advance().span;
     let name = parser.ident()?;
-    let params = if parser.is(TokenKind::LParen) {
-        params(parser)?
-    } else {
-        empty_list()
-    };
+    let params = if parser.is(TokenKind::LParen) { params(parser)? } else { empty_list() };
 
     match parser.peek() {
         TokenKind::Colon => {
@@ -447,14 +347,7 @@ fn func_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Func
             Ok(Spanned {
                 span: start_span + post.span,
                 node: FuncDecl::Heading(
-                    Spanned {
-                        span: start_span + decl_end,
-                        node: FuncSig {
-                            name,
-                            params,
-                            result,
-                        },
-                    },
+                    Spanned { span: start_span + decl_end, node: FuncSig { name, params, result } },
                     post,
                 ),
             })
@@ -462,10 +355,7 @@ fn func_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Func
         TokenKind::Semicolon if params.node.is_empty() => {
             parser.expect(TokenKind::Semicolon)?;
             let block = block(parser)?;
-            Ok(Spanned {
-                span: start_span + block.span,
-                node: FuncDecl::Ident(name, block),
-            })
+            Ok(Spanned { span: start_span + block.span, node: FuncDecl::Ident(name, block) })
         }
         TokenKind::Semicolon => parser.next_error("':'"),
         _ => parser.next_error("colon or semicolon"),
@@ -477,10 +367,7 @@ fn params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<Spa
     let params = parser.repeat_sep(TokenKind::Comma, param)?;
     let end_span = parser.expect(TokenKind::RParen)?.span;
 
-    Ok(Spanned {
-        span: start_span + end_span,
-        node: params,
-    })
+    Ok(Spanned { span: start_span + end_span, node: params })
 }
 
 fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
@@ -490,10 +377,7 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
             parser.expect(TokenKind::Colon)?;
             let r#type = param_type(parser)?;
 
-            Ok(Spanned {
-                span: params.span + r#type.span,
-                node: Param::Value(params, r#type),
-            })
+            Ok(Spanned { span: params.span + r#type.span, node: Param::Value(params, r#type) })
         }
         TokenKind::Var => {
             let start_span = parser.advance().span;
@@ -501,10 +385,7 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
             parser.expect(TokenKind::Colon)?;
             let r#type = param_type(parser)?;
 
-            Ok(Spanned {
-                span: start_span + r#type.span,
-                node: Param::Var(params, r#type),
-            })
+            Ok(Spanned { span: start_span + r#type.span, node: Param::Var(params, r#type) })
         }
         TokenKind::Procedure => {
             let start_span = parser.advance().span;
@@ -513,10 +394,7 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
 
             Ok(Spanned {
                 span: start_span + params.span,
-                node: Param::Proc(ProcSig {
-                    name,
-                    params: params.node,
-                }),
+                node: Param::Proc(ProcSig { name, params: params.node }),
             })
         }
         TokenKind::Function => {
@@ -528,11 +406,7 @@ fn param<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Param> {
 
             Ok(Spanned {
                 span: start_span + result.span,
-                node: Param::Func(FuncSig {
-                    name,
-                    params,
-                    result,
-                }),
+                node: Param::Func(FuncSig { name, params, result }),
             })
         }
         _ => parser.next_error("identifier, 'var', 'proc', 'func', 'packed' or 'array'"),
@@ -579,14 +453,7 @@ fn index_type_spec<'source>(parser: &mut ParserState<'source>) -> SpanParseResul
     parser.expect(TokenKind::Colon)?;
     let r#type = parser.ident()?;
 
-    Ok(Spanned {
-        span: lower.span + r#type.span,
-        node: IndexTypeSpec {
-            lower,
-            upper,
-            r#type,
-        },
-    })
+    Ok(Spanned { span: lower.span + r#type.span, node: IndexTypeSpec { lower, upper, r#type } })
 }
 
 fn ident_list<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<Ident>> {
@@ -601,10 +468,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
         parser
             .advance_source()
             .map(parse_unsigned_integer)
-            .map(|lit| ConstExpr::NumLitOrIdent {
-                is_pos,
-                lit: ConstExprLit::UIntLit(lit),
-            })
+            .map(|lit| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprLit::UIntLit(lit) })
     }
 
     fn ureallit<'source>(
@@ -614,10 +478,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
         parser
             .advance_source()
             .map(parse_unsigned_real)
-            .map(|lit| ConstExpr::NumLitOrIdent {
-                is_pos,
-                lit: ConstExprLit::URealLit(lit),
-            })
+            .map(|lit| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprLit::URealLit(lit) })
     }
 
     fn ident<'source>(
@@ -626,20 +487,15 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
     ) -> Spanned<ConstExpr> {
         parser
             .advance_ident()
-            .map(|ident| ConstExpr::NumLitOrIdent {
-                is_pos,
-                lit: ConstExprLit::Ident(ident),
-            })
+            .map(|ident| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprLit::Ident(ident) })
     }
 
     Ok(match parser.peek() {
         TokenKind::UIntLit => uintlit(parser, None),
         TokenKind::URealLit => ureallit(parser, None),
-        TokenKind::StrLit => parser
-            .advance_source()
-            .map(trim_ends)
-            .map(str::to_string)
-            .map(ConstExpr::StrLit),
+        TokenKind::StrLit => {
+            parser.advance_source().map(trim_ends).map(str::to_string).map(ConstExpr::StrLit)
+        }
         TokenKind::Ident => ident(parser, None),
         op @ TokenKind::Plus | op @ TokenKind::Minus => {
             let start_span = parser.advance().span;

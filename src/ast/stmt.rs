@@ -79,10 +79,8 @@ pub struct WriteParam {
 pub struct WriteParamSpecs {
     pub colon_span: Span,
     pub field_width: SpanExpr,
-    pub frac_digits: Option<(
-        /* colon_span */ Span,
-        /* fractional digits specifier */ SpanExpr,
-    )>,
+    pub frac_digits:
+        Option<(/* colon_span */ Span, /* fractional digits specifier */ SpanExpr)>,
 }
 
 #[derive(Debug, Clone)]

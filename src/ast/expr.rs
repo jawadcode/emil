@@ -14,19 +14,9 @@ pub enum Expr {
     URealLit(f64),
     StrLit(String),
     Set(Vec<SpanExpr>),
-    FuncCall {
-        name: Ident,
-        params: Spanned<Params>,
-    },
-    UnaryOp {
-        op: UnaryOp,
-        operand: Box<SpanExpr>,
-    },
-    BinOp {
-        op: BinOp,
-        left: Box<SpanExpr>,
-        right: Box<SpanExpr>,
-    },
+    FuncCall { name: Ident, params: Spanned<Params> },
+    UnaryOp { op: UnaryOp, operand: Box<SpanExpr> },
+    BinOp { op: BinOp, left: Box<SpanExpr>, right: Box<SpanExpr> },
 }
 
 pub type SpanVar = Spanned<Var>;
@@ -36,11 +26,7 @@ pub enum Var {
     Plain(UnspanIdent),
     Ref(Box<SpanVar>),
     Indexed(Box<SpanVar>, Spanned<Vec<SpanExpr>>),
-    FieldAccess {
-        record: Box<SpanVar>,
-        dot_span: Span,
-        field: Ident,
-    },
+    FieldAccess { record: Box<SpanVar>, dot_span: Span, field: Ident },
 }
 
 pub type Params = Vec<SpanExpr>;

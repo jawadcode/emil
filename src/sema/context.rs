@@ -172,11 +172,7 @@ pub enum DefPoint {
     BuiltinVar(BuiltinVar),
     BuiltinProc(BuiltinProc),
     BuiltinFunc(BuiltinFunc),
-    UserDef {
-        name: UnspanIdent,
-        kind: DefKind,
-        span: Span,
-    },
+    UserDef { name: UnspanIdent, kind: DefKind, span: Span },
 }
 
 #[derive(Debug)]
@@ -201,10 +197,7 @@ pub enum ParamKind {
     Value(ParamType),
     Var(ParamType),
     Proc(Vec<ParamId>),
-    Func {
-        params: Vec<ParamId>,
-        result: TypeId,
-    },
+    Func { params: Vec<ParamId>, result: TypeId },
 }
 
 #[derive(Debug, Clone)]
@@ -251,13 +244,8 @@ impl TypingContext {
             TypeKind::Text,
         ]);
 
-        let (integer, real, boolean, char, text) = (
-            OrdinalTypeId(0),
-            TypeId(1),
-            OrdinalTypeId(2),
-            OrdinalTypeId(3),
-            TypeId(4),
-        );
+        let (integer, real, boolean, char, text) =
+            (OrdinalTypeId(0), TypeId(1), OrdinalTypeId(2), OrdinalTypeId(3), TypeId(4));
 
         let mut defs = Vec::new();
 
@@ -273,10 +261,7 @@ impl TypingContext {
             defs,
             strings: Rodeo::default(),
             canonical_sets: HashMap::new(),
-            scopes: Vec::from([Scope {
-                idents,
-                ..Scope::default()
-            }]),
+            scopes: Vec::from([Scope { idents, ..Scope::default() }]),
             integer,
             real,
             boolean,
@@ -289,9 +274,9 @@ impl TypingContext {
     // of the arena, hopefully this doesn't come back to bite me :P
     pub fn convert_type(&mut self, ty: Spanned<&ATy>) -> Result<TypeId, AnalysisError> {
         match ty.node {
-            ATy::Ordinal(ordinal_type) => self
-                .convert_ordinal_type(ordinal_type, ty.span)
-                .map(|ord| ord.into()),
+            ATy::Ordinal(ordinal_type) => {
+                self.convert_ordinal_type(ordinal_type, ty.span).map(|ord| ord.into())
+            }
             ATy::Structured { packed, r#type } => {
                 let packed = packed.is_some();
                 match &r#type.node {
@@ -312,9 +297,9 @@ impl TypingContext {
                         .map(|component| self.fresh(TypeKind::File(component))),
                 }
             }
-            ATy::Pointer(pointee) => self
-                .lookup_type(*pointee, ty.span)
-                .map(|ty| self.fresh(TypeKind::Pointer(ty))),
+            ATy::Pointer(pointee) => {
+                self.lookup_type(*pointee, ty.span).map(|ty| self.fresh(TypeKind::Pointer(ty)))
+            }
             ATy::Ident(spur) => self.lookup_type(*spur, ty.span),
         }
     }
@@ -355,11 +340,7 @@ impl TypingContext {
         ty_span: Span,
     ) -> AnalysisResult<OrdinalTypeId> {
         let (host_type, lower, upper) = self.check_subrange(lower, upper, ty_span)?;
-        let ty = TypeKind::Subrange {
-            host_type,
-            lower,
-            upper,
-        };
+        let ty = TypeKind::Subrange { host_type, lower, upper };
 
         Ok(OrdinalTypeId(self.fresh(ty).0))
     }
@@ -413,11 +394,7 @@ impl TypingContext {
                     DefPoint::BuiltinConst(BuiltinConst::True) => Ok((self.boolean, 1)),
                     DefPoint::BuiltinConst(BuiltinConst::False) => Ok((self.boolean, 0)),
                     DefPoint::BuiltinConst(BuiltinConst::Maxint) => Ok((self.integer, i64::MAX)),
-                    DefPoint::UserDef {
-                        kind: DefKind::Const { r#type, value },
-                        span,
-                        ..
-                    } => {
+                    DefPoint::UserDef { kind: DefKind::Const { r#type, value }, span, .. } => {
                         let ty = self.check_bound_ordinality(*r#type, *span, subr_span)?;
 
                         let ord = match value {
@@ -445,10 +422,9 @@ impl TypingContext {
 
                         Ok((ty, ord))
                     }
-                    DefPoint::UserDef {
-                        kind: DefKind::EnumMember { r#type, ordinal },
-                        ..
-                    } => Ok((OrdinalTypeId(r#type.0), *ordinal)),
+                    DefPoint::UserDef { kind: DefKind::EnumMember { r#type, ordinal }, .. } => {
+                        Ok((OrdinalTypeId(r#type.0), *ordinal))
+                    }
                     _ => {
                         Err(AnalysisError::MismatchDef {
                             got: def,
@@ -495,26 +471,15 @@ impl TypingContext {
             DefPoint::BuiltinType(BuiltinType::Integer) => Ok(self.integer),
             DefPoint::BuiltinType(BuiltinType::Boolean) => Ok(self.boolean),
             DefPoint::BuiltinType(BuiltinType::Char) => Ok(self.char),
-            DefPoint::UserDef {
-                kind: DefKind::Type(r#type),
-                ..
-            } => match self.types[r#type.0] {
+            DefPoint::UserDef { kind: DefKind::Type(r#type), .. } => match self.types[r#type.0] {
                 TypeKind::Enumerated { .. }
                 | TypeKind::Subrange { .. }
                 | TypeKind::Integer
                 | TypeKind::Boolean
                 | TypeKind::Char => Ok(OrdinalTypeId(r#type.0)),
-                _ => Err(AnalysisError::MismatchDef {
-                    got: def,
-                    expected: "ordinal type",
-                    origin,
-                }),
+                _ => Err(AnalysisError::MismatchDef { got: def, expected: "ordinal type", origin }),
             },
-            _ => Err(AnalysisError::MismatchDef {
-                got: def,
-                expected: "ordinal type",
-                origin,
-            }),
+            _ => Err(AnalysisError::MismatchDef { got: def, expected: "ordinal type", origin }),
         }
     }
 
@@ -531,11 +496,7 @@ impl TypingContext {
             .map(|index| self.convert_ordinal_type(&index.node, ty_span))
             .collect::<AnalysisResult<_>>()?;
         let elem = self.convert_type(elem)?;
-        let ty = TypeKind::Array {
-            packed,
-            indices,
-            elem,
-        };
+        let ty = TypeKind::Array { packed, indices, elem };
 
         Ok(self.fresh(ty))
     }
@@ -546,11 +507,7 @@ impl TypingContext {
         fields: &p::FieldList,
     ) -> AnalysisResult<TypeId> {
         let FieldList { fixed, variant } = self.convert_field_list(fields)?;
-        let ty = TypeKind::Record {
-            packed,
-            fixed,
-            variant,
-        };
+        let ty = TypeKind::Record { packed, fixed, variant };
 
         Ok(self.fresh(ty))
     }
@@ -580,26 +537,16 @@ impl TypingContext {
         }
 
         let variant = variant_part
-            .map(
-                |p::VariantField {
-                     tag_field,
-                     tag_type,
-                     variants,
-                 }| {
-                    let tag_type = self.lookup_type(tag_type.node, tag_type.span)?;
-                    let variants = variants
-                        .node
-                        .iter()
-                        .map(|variant| self.convert_variant(tag_type, variant.as_ref()))
-                        .collect::<AnalysisResult<Vec<_>>>()?;
+            .map(|p::VariantField { tag_field, tag_type, variants }| {
+                let tag_type = self.lookup_type(tag_type.node, tag_type.span)?;
+                let variants = variants
+                    .node
+                    .iter()
+                    .map(|variant| self.convert_variant(tag_type, variant.as_ref()))
+                    .collect::<AnalysisResult<Vec<_>>>()?;
 
-                    Ok(VariantPart {
-                        tag_field: tag_field.map(|t| t.node),
-                        tag_type,
-                        variants,
-                    })
-                },
-            )
+                Ok(VariantPart { tag_field: tag_field.map(|t| t.node), tag_type, variants })
+            })
             .transpose()?;
 
         Ok(FieldList { fixed, variant })
@@ -625,10 +572,7 @@ impl TypingContext {
 
         let fields = self.convert_field_list(&variant.node.fields.node)?;
 
-        Ok(Variant {
-            case_labels,
-            fields,
-        })
+        Ok(Variant { case_labels, fields })
     }
 
     pub fn convert_constexpr(
@@ -665,10 +609,7 @@ impl TypingContext {
                     elem: self.char.into(),
                 };
 
-                Ok((
-                    self.fresh(ty),
-                    Constant::Str(self.get_or_intern_string(str)),
-                ))
+                Ok((self.fresh(ty), Constant::Str(self.get_or_intern_string(str))))
             }
         }
     }
@@ -710,26 +651,12 @@ impl TypingContext {
                 TypeKind::Subrange { host_type: ht2, .. },
             ) if ht1 == ht2 => Ok(()),
             (
-                TypeKind::Set {
-                    packed: p1,
-                    elem: elem1,
-                },
-                TypeKind::Set {
-                    packed: p2,
-                    elem: elem2,
-                },
+                TypeKind::Set { packed: p1, elem: elem1 },
+                TypeKind::Set { packed: p2, elem: elem2 },
             ) if p1 == p2 => self.check_compat((*elem1).into(), (*elem2).into(), origin),
             (
-                TypeKind::Array {
-                    packed: p1,
-                    indices: indices1,
-                    elem: elem1,
-                },
-                TypeKind::Array {
-                    packed: p2,
-                    indices: indices2,
-                    elem: elem2,
-                },
+                TypeKind::Array { packed: p1, indices: indices1, elem: elem1 },
+                TypeKind::Array { packed: p2, indices: indices2, elem: elem2 },
             ) if p1 == p2
                 && char_ty == *elem1
                 && char_ty == *elem2
@@ -739,11 +666,7 @@ impl TypingContext {
                 // A little wasteful
                 self.check_assign_compat(indices1[0].into(), indices2[0].into(), origin)
             }
-            _ => Err(AnalysisError::IncompatibleTypes {
-                got: t2,
-                expected: t1,
-                origin,
-            }),
+            _ => Err(AnalysisError::IncompatibleTypes { got: t2, expected: t1, origin }),
         }
     }
 
@@ -759,16 +682,8 @@ impl TypingContext {
             // Implicit conversion 🤢
             (TypeKind::Real, TypeKind::Integer) => Ok(()),
             (
-                TypeKind::Subrange {
-                    host_type,
-                    lower,
-                    upper,
-                },
-                TypeKind::Subrange {
-                    host_type: host_type2,
-                    lower: lower2,
-                    upper: upper2,
-                },
+                TypeKind::Subrange { host_type, lower, upper },
+                TypeKind::Subrange { host_type: host_type2, lower: lower2, upper: upper2 },
             ) => {
                 if host_type != host_type2 {
                     Err(AnalysisError::SubrangeHostTypeMismatch { t1, t2, origin })
@@ -779,39 +694,21 @@ impl TypingContext {
                 }
             }
             (
-                TypeKind::Set {
-                    packed: p1,
-                    elem: elem1,
-                },
-                TypeKind::Set {
-                    packed: p2,
-                    elem: elem2,
-                },
+                TypeKind::Set { packed: p1, elem: elem1 },
+                TypeKind::Set { packed: p2, elem: elem2 },
             ) if p1 == p2 => {
                 let range1 = self.get_interval(*elem1);
                 let range2 = self.get_interval(*elem2);
                 if range1.start() <= range2.start() && range1.last() >= range2.last() {
                     Ok(())
                 } else {
-                    Err(AnalysisError::IncompatibleTypes {
-                        got: t2,
-                        expected: t1,
-                        origin,
-                    })
+                    Err(AnalysisError::IncompatibleTypes { got: t2, expected: t1, origin })
                 }
             }
             // DRY: Do Repeat Yourself
             (
-                TypeKind::Array {
-                    packed: p1,
-                    indices: indices1,
-                    elem: elem1,
-                },
-                TypeKind::Array {
-                    packed: p2,
-                    indices: indices2,
-                    elem: elem2,
-                },
+                TypeKind::Array { packed: p1, indices: indices1, elem: elem1 },
+                TypeKind::Array { packed: p2, indices: indices2, elem: elem2 },
             ) if p1 == p2
                 && char_ty == *elem1
                 && char_ty == *elem2
@@ -821,11 +718,7 @@ impl TypingContext {
                 // A little wasteful
                 self.check_assign_compat(indices1[0].into(), indices2[0].into(), origin)
             }
-            _ => Err(AnalysisError::IncompatibleTypes {
-                got: t2,
-                expected: t1,
-                origin,
-            }),
+            _ => Err(AnalysisError::IncompatibleTypes { got: t2, expected: t1, origin }),
         }
     }
 
@@ -866,29 +759,19 @@ impl TypingContext {
         variant: Option<&VariantPart>,
     ) -> bool {
         fixed.iter().any(|field| {
-            let DefPoint::UserDef {
-                kind: DefKind::Field { r#type, .. },
-                ..
-            } = self.defs[field.0]
+            let DefPoint::UserDef { kind: DefKind::Field { r#type, .. }, .. } = self.defs[field.0]
             else {
                 unreachable!()
             };
             self.contains_file_type(r#type)
-        }) || variant.is_some_and(
-            |VariantPart {
-                 tag_type, variants, ..
-             }| {
-                self.contains_file_type(*tag_type)
-                    || variants.iter().any(
-                        |Variant {
-                             fields: FieldList { fixed, variant },
-                             ..
-                         }| {
-                            self.field_list_contains_file_type(fixed, variant.as_ref())
-                        },
-                    )
-            },
-        )
+        }) || variant.is_some_and(|VariantPart { tag_type, variants, .. }| {
+            self.contains_file_type(*tag_type)
+                || variants.iter().any(
+                    |Variant { fields: FieldList { fixed, variant }, .. }| {
+                        self.field_list_contains_file_type(fixed, variant.as_ref())
+                    },
+                )
+        })
     }
 
     /// # Panics
@@ -984,19 +867,11 @@ impl TypingContext {
     }
 
     pub fn lookup_type(&self, name: UnspanIdent, span: Span) -> AnalysisResult<TypeId> {
-        self.lookup(name, span)
-            .and_then(|def_id| match &self.defs[def_id.0] {
-                DefPoint::BuiltinType(bt) => Ok(self.builtin_type(*bt)),
-                DefPoint::UserDef {
-                    kind: DefKind::Type(r#type),
-                    ..
-                } => Ok(*r#type),
-                _ => Err(AnalysisError::MismatchDef {
-                    got: def_id,
-                    expected: "type",
-                    origin: span,
-                }),
-            })
+        self.lookup(name, span).and_then(|def_id| match &self.defs[def_id.0] {
+            DefPoint::BuiltinType(bt) => Ok(self.builtin_type(*bt)),
+            DefPoint::UserDef { kind: DefKind::Type(r#type), .. } => Ok(*r#type),
+            _ => Err(AnalysisError::MismatchDef { got: def_id, expected: "type", origin: span }),
+        })
     }
 
     pub fn lookup_const(
@@ -1004,19 +879,13 @@ impl TypingContext {
         name: UnspanIdent,
         span: Span,
     ) -> AnalysisResult<(TypeId, Constant)> {
-        self.lookup(name, span)
-            .and_then(|def_id| match &self.defs[def_id.0] {
-                DefPoint::BuiltinConst(bc) => Ok(self.builtin_const(*bc)),
-                DefPoint::UserDef {
-                    kind: DefKind::Const { r#type, value },
-                    ..
-                } => Ok((*r#type, *value)),
-                _ => Err(AnalysisError::MismatchDef {
-                    got: def_id,
-                    expected: "type",
-                    origin: span,
-                }),
-            })
+        self.lookup(name, span).and_then(|def_id| match &self.defs[def_id.0] {
+            DefPoint::BuiltinConst(bc) => Ok(self.builtin_const(*bc)),
+            DefPoint::UserDef { kind: DefKind::Const { r#type, value }, .. } => {
+                Ok((*r#type, *value))
+            }
+            _ => Err(AnalysisError::MismatchDef { got: def_id, expected: "type", origin: span }),
+        })
     }
 
     // fn builtin_const_type(&self, bc: BuiltinConst) -> TypeId {

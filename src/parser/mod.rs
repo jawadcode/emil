@@ -70,11 +70,7 @@ enum Builtin {
 
 impl<'source> ParserState<'source> {
     pub fn new(source: &'source str) -> Self {
-        Self {
-            source,
-            rodeo: Rodeo::new(),
-            lexer: Lexer::new(source).peekable(),
-        }
+        Self { source, rodeo: Rodeo::new(), lexer: Lexer::new(source).peekable() }
     }
 
     /// ParserState has yee'd its last haw.
@@ -91,8 +87,7 @@ impl<'source> ParserState<'source> {
 
     /// Unchecked version of [ParserState::ident]
     fn advance_ident(&mut self) -> Ident {
-        self.advance_source()
-            .map(|ident| self.rodeo.get_or_intern(ident.to_lowercase()))
+        self.advance_source().map(|ident| self.rodeo.get_or_intern(ident.to_lowercase()))
     }
 
     fn builtin_name(&mut self, name: Builtin) -> UnspanIdent {
@@ -115,10 +110,7 @@ impl<'source> ParserState<'source> {
 
     /// Peeks the next token's kind.
     fn peek(&mut self) -> TokenKind {
-        self.lexer
-            .peek()
-            .map(|tok| tok.node)
-            .unwrap_or(TokenKind::Eof)
+        self.lexer.peek().map(|tok| tok.node).unwrap_or(TokenKind::Eof)
     }
 
     /// Gets the next token from the lexer, checking that it is as [expected].
@@ -129,10 +121,7 @@ impl<'source> ParserState<'source> {
     fn expect(&mut self, expected: TokenKind) -> SpanParseResult<TokenKind> {
         self.next().and_then(|got| {
             if got.node != expected {
-                Err(SyntaxError {
-                    expected: expected.to_string(),
-                    got,
-                })
+                Err(SyntaxError { expected: expected.to_string(), got })
             } else {
                 Ok(got)
             }
@@ -157,10 +146,7 @@ impl<'source> ParserState<'source> {
     /// Errors if the lexer returns [`None`], or the next token and [expected] do not match.
     fn expect_source(&mut self, expected: TokenKind) -> SpanParseResult<&'source str> {
         let Token { span, .. } = self.expect(expected)?;
-        Ok(Spanned {
-            span,
-            node: &self.source[span],
-        })
+        Ok(Spanned { span, node: &self.source[span] })
     }
 
     /// Gets the next token and returns its corresponding source string slice.
@@ -170,10 +156,7 @@ impl<'source> ParserState<'source> {
     /// Panics if the lexer returns [`None`].
     fn advance_source(&mut self) -> Spanned<&'source str> {
         let Token { span, .. } = self.advance();
-        Spanned {
-            span,
-            node: &self.source[span],
-        }
+        Spanned { span, node: &self.source[span] }
     }
 
     /// Parses 0 or more of [parser], repeating on the apperance of the token [on].
@@ -197,10 +180,7 @@ impl<'source> ParserState<'source> {
             }
             items.push(parsed);
         }
-        Ok(Spanned {
-            span: span.unwrap_or_default(),
-            node: items,
-        })
+        Ok(Spanned { span: span.unwrap_or_default(), node: items })
     }
 
     /// Parses one or more of [parser], repeating based on the apperance of [separator].
@@ -257,10 +237,7 @@ impl<'source> ParserState<'source> {
         while self.is(start.clone()) {
             let lhs_span = result.span;
             let ext = ext(self, result)?;
-            result = Spanned {
-                span: lhs_span + ext.span,
-                node: ext.node,
-            };
+            result = Spanned { span: lhs_span + ext.span, node: ext.node };
         }
 
         Ok(result)
@@ -279,10 +256,7 @@ impl<'source> ParserState<'source> {
         let end = self.source.len();
         SyntaxError {
             expected: "token".to_string(),
-            got: Token {
-                span: (end..end).into(),
-                node: TokenKind::Eof,
-            },
+            got: Token { span: (end..end).into(), node: TokenKind::Eof },
         }
     }
 }
@@ -299,10 +273,7 @@ impl Display for SyntaxError {
 
 /// Return an empty list with a nonsense span as it should never be accessed
 fn empty_list<T: Clone + std::fmt::Debug>() -> Spanned<Vec<T>> {
-    Spanned {
-        span: (0..0).into(),
-        node: Vec::new(),
-    }
+    Spanned { span: (0..0).into(), node: Vec::new() }
 }
 
 fn add_span_opt(lhs: Span, rhs: Option<Span>) -> Span {

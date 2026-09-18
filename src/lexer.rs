@@ -20,11 +20,7 @@ pub struct Lexer<'source> {
 
 impl<'source> Lexer<'source> {
     pub fn new(source: &'source str) -> Self {
-        Self {
-            eof: false,
-            logos_iter: TokenKind::lexer(source).spanned(),
-            end: source.len(),
-        }
+        Self { eof: false, logos_iter: TokenKind::lexer(source).spanned(), end: source.len() }
     }
 }
 
@@ -34,14 +30,10 @@ impl Iterator for Lexer<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.logos_iter.next() {
             None if self.eof => None,
-            None => Some(Token {
-                span: (self.end..self.end).into(),
-                node: TokenKind::Eof,
-            }),
-            Some((tok, span)) => Some(Token {
-                span: span.into(),
-                node: tok.unwrap_or(TokenKind::Error),
-            }),
+            None => Some(Token { span: (self.end..self.end).into(), node: TokenKind::Eof }),
+            Some((tok, span)) => {
+                Some(Token { span: span.into(), node: tok.unwrap_or(TokenKind::Error) })
+            }
         }
     }
 }
@@ -133,9 +125,7 @@ pub enum TokenKind {
 }
 
 fn parse_uint<C: Iterator<Item = u8>>(chars: &mut C) -> u64 {
-    chars
-        .map(|c| c - b'0')
-        .fold(0, |acc, d| acc * 10 + (d as u64))
+    chars.map(|c| c - b'0').fold(0, |acc, d| acc * 10 + (d as u64))
 }
 
 pub fn parse_unsigned_integer(tok: &str) -> u64 {

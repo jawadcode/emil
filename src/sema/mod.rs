@@ -114,18 +114,13 @@ impl<'ast> Analyser {
 
         let rodeo = rodeo.into_inner(); // RefCell goes poof
 
-        Self {
-            context,
-            errors: Vec::new(),
-            rodeo,
-        }
+        Self { context, errors: Vec::new(), rodeo }
     }
 
     pub fn check_program(&mut self, program: &'ast p::Program) -> AnalysisResult<()> {
         self.context.enter_scope(); // Program scope
         for param in &program.params.node {
-            self.context
-                .insert_def(param.node, DefKind::ProgramParam, param.span);
+            self.context.insert_def(param.node, DefKind::ProgramParam, param.span);
         }
 
         self.check_block(&program.block.node, None)?;
@@ -144,14 +139,8 @@ impl<'ast> Analyser {
     ) -> AnalysisResult<()> {
         self.context.enter_scope();
 
-        let p::Block {
-            label_decls,
-            const_defs,
-            type_defs,
-            var_decls,
-            routine_decls,
-            stmts,
-        } = block;
+        let p::Block { label_decls, const_defs, type_defs, var_decls, routine_decls, stmts } =
+            block;
 
         for label in &label_decls.node {
             self.context.insert_label(*label);
@@ -171,16 +160,14 @@ impl<'ast> Analyser {
         for type_def in &type_defs.node {
             let p::TypeDef { name, def } = &type_def.node;
             let r#type = self.context.convert_type(def.as_ref())?;
-            self.context
-                .insert_def(name.node, DefKind::Type(r#type), type_def.span);
+            self.context.insert_def(name.node, DefKind::Type(r#type), type_def.span);
         }
 
         for var_decl in &var_decls.node {
             let p::VarDecl { names, r#type } = &var_decl.node;
             let r#type = self.context.convert_type(r#type.as_ref())?;
             for name in &names.node {
-                self.context
-                    .insert_def(name.node, DefKind::Var(r#type), name.span);
+                self.context.insert_def(name.node, DefKind::Var(r#type), name.span);
             }
         }
 
@@ -220,8 +207,7 @@ impl<'ast> Analyser {
             _ => unimplemented!("Directives other than `forward` are currently unsupported"),
         };
         let proc = ProcSig { params, has_body };
-        self.context
-            .insert_def(name.node, DefKind::Proc(proc), span);
+        self.context.insert_def(name.node, DefKind::Proc(proc), span);
 
         Ok(())
     }
@@ -233,10 +219,7 @@ impl<'ast> Analyser {
                 let def = self.context.lookup(name.node, name.span)?;
                 let has_body = {
                     match self.context.get_def(def) {
-                        DefPoint::UserDef {
-                            kind: DefKind::Func(sig),
-                            ..
-                        } => sig.has_body,
+                        DefPoint::UserDef { kind: DefKind::Func(sig), .. } => sig.has_body,
                         _ => {
                             return Err(AnalysisError::MismatchDef {
                                 got: def,
@@ -254,10 +237,8 @@ impl<'ast> Analyser {
                         duplicate: span,
                     });
                 } else {
-                    let DefPoint::UserDef {
-                        kind: DefKind::Func(sig),
-                        ..
-                    } = self.context.get_def_mut(def)
+                    let DefPoint::UserDef { kind: DefKind::Func(sig), .. } =
+                        self.context.get_def_mut(def)
                     else {
                         unreachable!()
                     };
@@ -265,10 +246,7 @@ impl<'ast> Analyser {
                 }
 
                 self.context.enter_scope(); // Function scope
-                let DefPoint::UserDef {
-                    kind: DefKind::Func(sig),
-                    ..
-                } = self.context.get_def(def)
+                let DefPoint::UserDef { kind: DefKind::Func(sig), .. } = self.context.get_def(def)
                 else {
                     unreachable!()
                 };
@@ -283,15 +261,8 @@ impl<'ast> Analyser {
                 Ok(())
             }
             p::FuncDecl::Heading(sig, post_sig) => {
-                println!(
-                    "\nFunction: {:?}",
-                    sig.node.name.map(|n| self.rodeo.resolve(&n))
-                );
-                let p::FuncSig {
-                    name,
-                    params,
-                    result,
-                } = &sig.node;
+                println!("\nFunction: {:?}", sig.node.name.map(|n| self.rodeo.resolve(&n)));
+                let p::FuncSig { name, params, result } = &sig.node;
 
                 let params = self.convert_params(&params.node)?;
                 let result = self.context.lookup_type(result.node, result.span)?;
@@ -310,11 +281,7 @@ impl<'ast> Analyser {
 
                 self.context.insert_def(
                     name.node,
-                    DefKind::Func(FuncSig {
-                        params,
-                        result,
-                        has_body,
-                    }),
+                    DefKind::Func(FuncSig { params, result, has_body }),
                     span,
                 );
                 Ok(())
@@ -364,9 +331,8 @@ impl<'ast> Analyser {
                 }
                 p::Param::Func(func_sig) => {
                     let params = self.convert_params(&func_sig.params.node)?;
-                    let result = self
-                        .context
-                        .lookup_type(func_sig.result.node, func_sig.result.span)?;
+                    let result =
+                        self.context.lookup_type(func_sig.result.node, func_sig.result.span)?;
 
                     new_params.push(self.context.create_param(
                         func_sig.name.node,
@@ -382,10 +348,9 @@ impl<'ast> Analyser {
 
     fn convert_param_type(&mut self, r#type: Spanned<&p::ParamType>) -> AnalysisResult<ParamType> {
         match r#type.node {
-            p::ParamType::TypeIdent(spur) => self
-                .context
-                .lookup_type(*spur, r#type.span)
-                .map(ParamType::TypeIdent),
+            p::ParamType::TypeIdent(spur) => {
+                self.context.lookup_type(*spur, r#type.span).map(ParamType::TypeIdent)
+            }
             p::ParamType::ArraySchema(array_schema) => {
                 unimplemented!("array schemata are unsupported at the moment")
             }
@@ -399,8 +364,5 @@ impl<'ast> Analyser {
 
 /// Dummy span for builtins
 fn span_bltn<T: Debug + Clone>(node: T) -> Spanned<T> {
-    Spanned {
-        span: (0..0).into(),
-        node,
-    }
+    Spanned { span: (0..0).into(), node }
 }

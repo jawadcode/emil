@@ -16,10 +16,7 @@ pub struct Span {
 
 impl From<Range<usize>> for Span {
     fn from(value: Range<usize>) -> Self {
-        Self {
-            start: value.start,
-            end: value.end,
-        }
+        Self { start: value.start, end: value.end }
     }
 }
 
@@ -27,10 +24,7 @@ impl Add for Span {
     type Output = Span;
 
     fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            start: self.start.min(rhs.start),
-            end: rhs.end.max(rhs.end),
-        }
+        Self { start: self.start.min(rhs.start), end: rhs.end.max(rhs.end) }
     }
 }
 
@@ -77,10 +71,7 @@ where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        Spanned {
-            span: self.span,
-            node: self.node.clone(),
-        }
+        Spanned { span: self.span, node: self.node.clone() }
     }
 }
 
@@ -88,10 +79,7 @@ impl<T: Debug + Clone> Copy for Spanned<T> where T: Copy {}
 
 impl<T: Debug + Clone> Spanned<&T> {
     pub fn cloned(self) -> Spanned<T> {
-        Spanned {
-            span: self.span,
-            node: self.node.clone(),
-        }
+        Spanned { span: self.span, node: self.node.clone() }
     }
 }
 
@@ -110,17 +98,11 @@ impl<T: Debug + Clone> Spanned<T> {
 
     /// Totally not `fmap`
     pub fn map<U: Debug + Clone>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
-        Spanned {
-            span: self.span,
-            node: f(self.node),
-        }
+        Spanned { span: self.span, node: f(self.node) }
     }
 
     pub fn map_span(self, f: impl FnOnce(Span) -> Span) -> Self {
-        Spanned {
-            span: f(self.span),
-            node: self.node,
-        }
+        Spanned { span: f(self.span), node: self.node }
     }
 
     /// Totally not just `liftA2`
@@ -129,24 +111,15 @@ impl<T: Debug + Clone> Spanned<T> {
         other: Spanned<U>,
         f: impl FnOnce(T, U) -> V,
     ) -> Spanned<V> {
-        Spanned {
-            span: self.span + other.span,
-            node: f(self.node, other.node),
-        }
+        Spanned { span: self.span + other.span, node: f(self.node, other.node) }
     }
 
     pub fn as_ref(&self) -> Spanned<&T> {
-        Spanned {
-            span: self.span,
-            node: &self.node,
-        }
+        Spanned { span: self.span, node: &self.node }
     }
 
     pub fn as_mut(&mut self) -> Spanned<&mut T> {
-        Spanned {
-            span: self.span,
-            node: &mut self.node,
-        }
+        Spanned { span: self.span, node: &mut self.node }
     }
 
     pub fn fmt_many<'a, F, Ctx>(
