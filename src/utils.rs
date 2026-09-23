@@ -1,7 +1,7 @@
 use std::{
     error::Error,
     fmt::{self, Debug, Display, Write},
-    ops::{Add, AddAssign, Index, Range},
+    ops::{Add, AddAssign, Deref, Index, Range},
 };
 
 pub fn trim_ends(s: &str) -> &str {
@@ -53,12 +53,12 @@ impl Display for Span {
 
 /* A little bit of fun */
 
-pub struct Spanned<T: Debug> {
+pub struct Spanned<T> {
     pub span: Span,
     pub node: T,
 }
 
-impl<T: Debug + Clone> Debug for Spanned<T> {
+impl<T: Debug> Debug for Spanned<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         Debug::fmt(&self.node, f)?;
         f.write_char('@')?;
@@ -66,39 +66,46 @@ impl<T: Debug + Clone> Debug for Spanned<T> {
     }
 }
 
-impl<T: Debug> Clone for Spanned<T>
-where
-    T: Clone,
-{
+impl<T: Clone> Clone for Spanned<T> {
     fn clone(&self) -> Self {
         Spanned { span: self.span, node: self.node.clone() }
     }
 }
 
-impl<T: Debug + Clone> Copy for Spanned<T> where T: Copy {}
+impl<T: Clone + Copy> Copy for Spanned<T> {}
 
-impl<T: Debug + Clone> Spanned<&T> {
+impl<T: Clone> Spanned<&T> {
     pub fn cloned(self) -> Spanned<T> {
         Spanned { span: self.span, node: self.node.clone() }
     }
 }
 
-impl<T: Debug + Clone, E: Error> Spanned<Result<T, E>> {
+impl<T, E: Error> Spanned<Result<T, E>> {
     pub fn transpose(self: Spanned<Result<T, E>>) -> Result<Spanned<T>, E> {
         let Spanned { span, node } = self;
         node.map(|node| Spanned { span, node })
     }
 }
 
+impl<T: Deref> Spanned<T> {
+    pub fn as_deref(&self) -> Spanned<&T::Target> {
+        Spanned { span: self.span, node: Deref::deref(&self.node) }
+    }
+}
+
 /// Definitely not an applicative functor 😉
-impl<T: Debug + Clone> Spanned<T> {
+impl<T> Spanned<T> {
     pub fn get_node(self) -> T {
         self.node
     }
 
     /// Totally not `fmap`
-    pub fn map<U: Debug + Clone>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned { span: self.span, node: f(self.node) }
+    }
+
+    pub fn map_ref<U>(self, f: impl FnOnce(&T) -> U) -> Spanned<U> {
+        Spanned { span: self.span, node: f(&self.node) }
     }
 
     pub fn map_span(self, f: impl FnOnce(Span) -> Span) -> Self {
@@ -106,11 +113,7 @@ impl<T: Debug + Clone> Spanned<T> {
     }
 
     /// Totally not just `liftA2`
-    pub fn merge<U: Debug + Clone, V: Debug + Clone>(
-        self,
-        other: Spanned<U>,
-        f: impl FnOnce(T, U) -> V,
-    ) -> Spanned<V> {
+    pub fn merge<U, V>(self, other: Spanned<U>, f: impl FnOnce(T, U) -> V) -> Spanned<V> {
         Spanned { span: self.span + other.span, node: f(self.node, other.node) }
     }
 

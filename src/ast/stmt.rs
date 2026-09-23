@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        expr::{Params, SpanExpr, SpanVar},
+        expr::{Args, SpanExpr, SpanVar},
         Ident,
     },
     utils::{Span, Spanned},
@@ -35,7 +35,7 @@ pub enum Stmt {
     WritelnCall(Spanned<Vec<Spanned<WriteParam>>>),
     ProcCall {
         name: Ident,
-        params: Spanned<Params>,
+        args: Spanned<Args>,
     },
     Goto(u16),
     Compound(CompoundStmt),

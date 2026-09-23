@@ -1,5 +1,5 @@
 use crate::{
-    ast::expr::{Expr, Params, SpanVar, UnaryOp, Var},
+    ast::expr::{Args, Expr, SetMember, SpanVar, UnaryOp, Var},
     lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
     utils::{trim_ends, Spanned},
 };
@@ -88,7 +88,18 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
         TokenKind::Ident => factor_ident(parser),
         TokenKind::LSquare => {
             let start_span = parser.advance().span;
-            let elems = parser.repeat_sep(TokenKind::Comma, expr)?;
+            let member = |p: &mut ParserState<'_>| {
+                let start = expr(p)?;
+                let end = if p.is(TokenKind::Ellipsis) {
+                    p.advance();
+                    Some(expr(p)?)
+                } else {
+                    None
+                };
+                let span = end.as_ref().map(|e| start_span + e.span).unwrap_or(start_span);
+                Ok(Spanned { span, node: SetMember { start, end } })
+            };
+            let elems = parser.repeat_sep(TokenKind::Comma, member)?;
             let end_span = parser.expect(TokenKind::RSquare)?.span;
 
             Ok(Spanned { span: start_span + end_span, node: Expr::Set(elems) })
@@ -121,8 +132,8 @@ fn factor_ident<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<E
     Ok(if parser.is(VAR_EXT_START) {
         parser.repeat_fold(VAR_EXT_START, var_ext, |_| Ok(ident.map(Var::Plain)))?.map(Expr::Var)
     } else if parser.is(TokenKind::LParen) {
-        let params = params(parser)?;
-        Spanned { span: params.span, node: Expr::FuncCall { name: ident, params } }
+        let args = args(parser)?;
+        Spanned { span: args.span, node: Expr::FuncCall { name: ident, args } }
     } else {
         ident.map(Var::Plain).map(Expr::Var)
     })
@@ -167,7 +178,7 @@ pub(super) fn var_ext<'source>(
     }
 }
 
-pub(super) fn params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Params> {
+pub(super) fn args<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Args> {
     let start_span = parser.advance().span;
     let params = parser.repeat_sep(TokenKind::Comma, expr)?;
     let end_span = parser.expect(TokenKind::RParen)?.span;

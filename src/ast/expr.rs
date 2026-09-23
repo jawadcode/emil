@@ -13,8 +13,8 @@ pub enum Expr {
     UIntLit(u64),
     URealLit(f64),
     StrLit(String),
-    Set(Vec<SpanExpr>),
-    FuncCall { name: Ident, params: Spanned<Params> },
+    Set(Vec<Spanned<SetMember>>),
+    FuncCall { name: Ident, args: Spanned<Args> },
     UnaryOp { op: UnaryOp, operand: Box<SpanExpr> },
     BinOp { op: BinOp, left: Box<SpanExpr>, right: Box<SpanExpr> },
 }
@@ -29,7 +29,13 @@ pub enum Var {
     FieldAccess { record: Box<SpanVar>, dot_span: Span, field: Ident },
 }
 
-pub type Params = Vec<SpanExpr>;
+#[derive(Debug, Clone)]
+pub struct SetMember {
+    pub start: SpanExpr,
+    pub end: Option<SpanExpr>,
+}
+
+pub type Args = Vec<SpanExpr>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UnaryOp {

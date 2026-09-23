@@ -1,19 +1,16 @@
-// Excuse the extensive use of `..`, I hate the way rustfmt formats >2 field struct patterns
-
 use std::{collections::HashMap, ops::RangeInclusive};
 
 use crate::{
     ast::{
-        self,
+        self, UnspanIdent,
         program::{ConstExpr, SubrangeBound},
-        UnspanIdent,
     },
     utils::{Span, Spanned},
 };
 
 use super::{
-    builtins::{BuiltinConst, BuiltinFunc, BuiltinProc, BuiltinType, BuiltinVar},
     AnalysisError, AnalysisResult,
+    builtins::{BuiltinConst, BuiltinFunc, BuiltinProc, BuiltinType, BuiltinVar},
 };
 use ast::program as p;
 use ast::program::{OrdinalType as AOrdTy, Type as ATy, UnpackedStructuredType as AUnpackStructTy};
@@ -25,12 +22,16 @@ pub struct TypingContext {
     strings: Rodeo,
     canonical_sets: HashMap<(OrdinalTypeId, bool), TypeId>,
     scopes: Vec<Scope>,
-    // This feels jank
-    integer: OrdinalTypeId,
-    real: TypeId,
-    boolean: OrdinalTypeId,
-    char: OrdinalTypeId,
-    text: TypeId,
+    // TODO: This feels jank, maybe move it into a separate struct
+    pub integer: OrdinalTypeId,
+    pub real: TypeId,
+    pub boolean: OrdinalTypeId,
+    pub char: OrdinalTypeId,
+    pub text: TypeId,
+    /// For error diags only!!!
+    pub pointer_of_t: TypeId,
+    /// For error diags only!!!
+    pub set_of_t: TypeId,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -64,6 +65,7 @@ pub enum Constant {
     // },
 }
 
+#[derive(Debug, Clone)]
 pub enum TypeKind {
     Enumerated {
         members: Vec<EnumMemberId>,
@@ -96,26 +98,33 @@ pub enum TypeKind {
     },
     File(TypeId),
     Pointer(TypeId),
+
+    /* FOR ERROR DIAGNOSTICS ONLY */
+    // `nil` and `[]` are type-checked eagerly against an expected type
+    PointerOfT,
+    SetOfT,
 }
 
+#[derive(Debug, Clone)]
 pub struct VariantPart {
-    tag_field: Option<UnspanIdent>,
-    tag_type: TypeId,
-    variants: Vec<Variant>,
+    pub tag_field: Option<UnspanIdent>,
+    pub tag_type: TypeId,
+    pub variants: Vec<Variant>,
 }
 
+#[derive(Debug, Clone)]
 pub struct Variant {
-    case_labels: Vec<Constant>,
-    fields: FieldList,
+    pub case_labels: Vec<Constant>,
+    pub fields: FieldList,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct FieldList {
-    fixed: Vec<FieldId>,
-    variant: Option<VariantPart>,
+    pub fixed: Vec<FieldId>,
+    pub variant: Option<VariantPart>,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug, Clone)]
 pub struct Scope {
     labels: HashMap<u16, Span>,
     idents: HashMap<UnspanIdent, DefId>,
@@ -165,7 +174,7 @@ impl From<ConformArrayBoundId> for DefId {
 }
 
 /// A `defining-point` as per the standard
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DefPoint {
     BuiltinConst(BuiltinConst),
     BuiltinType(BuiltinType),
@@ -175,7 +184,7 @@ pub enum DefPoint {
     UserDef { name: UnspanIdent, kind: DefKind, span: Span },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DefKind {
     ProgramParam,
     Const { r#type: TypeId, value: Constant },
@@ -242,10 +251,19 @@ impl TypingContext {
             TypeKind::Boolean,
             TypeKind::Char,
             TypeKind::Text,
+            TypeKind::PointerOfT,
+            TypeKind::SetOfT,
         ]);
 
-        let (integer, real, boolean, char, text) =
-            (OrdinalTypeId(0), TypeId(1), OrdinalTypeId(2), OrdinalTypeId(3), TypeId(4));
+        let (integer, real, boolean, char, text, pointer_of_t, set_of_t) = (
+            OrdinalTypeId(0),
+            TypeId(1),
+            OrdinalTypeId(2),
+            OrdinalTypeId(3),
+            TypeId(4),
+            TypeId(5),
+            TypeId(6),
+        );
 
         let mut defs = Vec::new();
 
@@ -267,6 +285,8 @@ impl TypingContext {
             boolean,
             char,
             text,
+            pointer_of_t,
+            set_of_t,
         }
     }
 
@@ -456,7 +476,7 @@ impl TypingContext {
                 got: r#type,
                 at: bound_span,
                 expected: Self::ORD_MSG,
-                origin: subr_span,
+                reason: subr_span,
             }),
         }
     }
@@ -593,25 +613,25 @@ impl TypingContext {
                 }
             }
             ConstExpr::StrLit(str) => {
-                // TODO: Make `OrdinalTypeId` correct by construction with a `fresh_ordinal_ty` method or similar
-                // which asserts that `kind` is actually ordinal with `unreachable!()`.
-                let subrange = OrdinalTypeId(
-                    self.fresh(TypeKind::Subrange {
-                        host_type: self.integer,
-                        lower: 1,
-                        upper: str.len() as i64 - 1,
-                    })
-                    .0,
-                );
-                let ty = TypeKind::Array {
-                    packed: true,
-                    indices: vec![subrange],
-                    elem: self.char.into(),
-                };
-
-                Ok((self.fresh(ty), Constant::Str(self.get_or_intern_string(str))))
+                let str_type = self.infer_string(str);
+                Ok((str_type, Constant::Str(self.get_or_intern_string(str))))
             }
         }
+    }
+
+    pub fn infer_string(&mut self, str: &str) -> TypeId {
+        // TODO: Make `OrdinalTypeId` correct by construction with a `fresh_ordinal_ty` method or similar
+        // which asserts that `kind` is actually ordinal with `unreachable!()`.
+        let subrange = OrdinalTypeId(
+            self.fresh(TypeKind::Subrange {
+                host_type: self.integer,
+                lower: 1,
+                upper: str.len() as i64 - 1,
+            })
+            .0,
+        );
+        let ty = TypeKind::Array { packed: true, indices: vec![subrange], elem: self.char.into() };
+        self.fresh(ty)
     }
 
     pub fn fresh(&mut self, kind: TypeKind) -> TypeId {
@@ -636,6 +656,27 @@ impl TypingContext {
                 self.types.push(kind);
                 TypeId(self.types.len() - 1)
             }
+        }
+    }
+
+    pub fn to_ordinal(
+        &self,
+        r#type: TypeId,
+        at: Span,
+        reason: Span,
+    ) -> AnalysisResult<OrdinalTypeId> {
+        match &self.types[r#type.0] {
+            TypeKind::Enumerated { .. }
+            | TypeKind::Subrange { .. }
+            | TypeKind::Integer
+            | TypeKind::Boolean
+            | TypeKind::Char => Ok(OrdinalTypeId(r#type.0)),
+            _ => Err(AnalysisError::MismatchType {
+                got: r#type,
+                at,
+                expected: "ordinal type",
+                reason,
+            }),
         }
     }
 
@@ -750,6 +791,7 @@ impl TypingContext {
             }
             TypeKind::Pointer(r#type) => self.contains_file_type(*r#type),
             TypeKind::File(_) => true,
+            TypeKind::PointerOfT | TypeKind::SetOfT => unreachable!(),
         }
     }
 
@@ -888,15 +930,22 @@ impl TypingContext {
         })
     }
 
-    // fn builtin_const_type(&self, bc: BuiltinConst) -> TypeId {
-    //     match bc {
-    //         BuiltinConst::True | BuiltinConst::False => self.boolean,
-    //         BuiltinConst::Maxint => self.integer,
-    //     }
-    //     .into()
-    // }
+    pub fn lookup_label(&self, label: u16, at: Span) -> AnalysisResult<Span> {
+        self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.labels.get(&label).cloned())
+            .ok_or(AnalysisError::MissingLabel { label, at })
+    }
 
-    fn builtin_const(&self, bc: BuiltinConst) -> (TypeId, Constant) {
+    pub fn builtin_var(&self, bv: BuiltinVar) -> TypeId {
+        match bv {
+            BuiltinVar::Input => self.text,
+            BuiltinVar::Output => self.text,
+        }
+    }
+
+    pub fn builtin_const(&self, bc: BuiltinConst) -> (TypeId, Constant) {
         let ty = self.builtin_type(bc.get_type());
         let cnst = match bc {
             BuiltinConst::True => Constant::Bool(true),
@@ -907,7 +956,7 @@ impl TypingContext {
         (ty, cnst)
     }
 
-    fn builtin_type(&self, bt: BuiltinType) -> TypeId {
+    pub fn builtin_type(&self, bt: BuiltinType) -> TypeId {
         match bt {
             BuiltinType::Integer => self.integer.into(),
             BuiltinType::Real => self.real,
@@ -951,6 +1000,10 @@ impl TypingContext {
 
     pub fn get_def_mut(&mut self, def: DefId) -> &mut DefPoint {
         &mut self.defs[def.0]
+    }
+
+    pub fn get_type(&self, r#type: TypeId) -> &TypeKind {
+        &self.types[r#type.0]
     }
 
     fn get_or_intern_string(&mut self, s: &str) -> StringId {

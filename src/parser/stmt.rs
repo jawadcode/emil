@@ -11,7 +11,7 @@ use crate::{
 };
 
 use super::{
-    expr::{expr, params, var, var_ext},
+    expr::{args, expr, var, var_ext},
     parse_label,
     program::constexpr,
     ParserState, SpanParseResult,
@@ -108,9 +108,9 @@ fn assign_or_proc_call<'source>(parser: &mut ParserState<'source>) -> SpanParseR
                 node: Stmt::ReadCall(params),
             })
         } else {
-            params(parser).map(|params| Spanned {
+            args(parser).map(|params| Spanned {
                 span: name.span + params.span,
-                node: Stmt::ProcCall { name, params },
+                node: Stmt::ProcCall { name, args: params },
             })
         }
     } else if peeked == TokenKind::Semicolon {
