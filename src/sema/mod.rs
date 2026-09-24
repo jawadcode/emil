@@ -543,14 +543,14 @@ impl<'ast> Analyser {
         param_kind_ctor: fn(ParamType) -> ParamKind,
     ) -> AnalysisResult<ParamSection> {
         let r#type = self.convert_param_type(r#type)?;
-        match names {
-            &[] => unreachable!(),
-            &[sole] => Ok(ParamSection::One(self.context.create_param(
+        match *names {
+            [] => unreachable!(),
+            [sole] => Ok(ParamSection::One(self.context.create_param(
                 sole.node,
                 sole.span,
                 param_kind_ctor(r#type),
             ))),
-            &[first, ref rest @ ..] => {
+            [first, ref rest @ ..] => {
                 let mut many = Vec::from([self.context.create_param(
                     first.node,
                     first.span,
@@ -859,17 +859,9 @@ impl<'ast> Analyser {
                 (ParamSection::One(p1), ParamSection::One(p2)) => {
                     self.check_params_congruity(formal, actual, p1, p2, origin)?;
                 }
-                (ParamSection::Many(ps1), ParamSection::Many(ps2)) => {
-                    if ps1.len() == ps2.len() {
-                        for (p1, p2) in ps1.iter().cloned().zip(ps2.iter().cloned()) {
-                            self.check_params_congruity(formal, actual, p1, p2, origin)?;
-                        }
-                    } else {
-                        return Err(AnalysisError::RoutineParamsShapeMismatch {
-                            formal,
-                            actual,
-                            origin,
-                        });
+                (ParamSection::Many(ps1), ParamSection::Many(ps2)) if ps1.len() == ps2.len() => {
+                    for (p1, p2) in ps1.iter().cloned().zip(ps2.iter().cloned()) {
+                        self.check_params_congruity(formal, actual, p1, p2, origin)?;
                     }
                 }
                 _ => {

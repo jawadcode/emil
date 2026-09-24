@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{
     error::Error,
     fmt::{self, Debug, Display, Write},
