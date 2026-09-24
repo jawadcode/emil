@@ -1,9 +1,9 @@
-use std::{collections::HashMap, ops::RangeInclusive};
+use std::{collections::HashMap, iter, ops::RangeInclusive};
 
 use crate::{
     ast::{
         self, UnspanIdent,
-        program::{ConstExpr, SubrangeBound},
+        program::{ConstExpr, Param, SubrangeBound},
     },
     utils::{Span, Spanned},
 };
@@ -205,8 +205,8 @@ pub enum DefKind {
 pub enum ParamKind {
     Value(ParamType),
     Var(ParamType),
-    Proc(Vec<ParamId>),
-    Func { params: Vec<ParamId>, result: TypeId },
+    Proc(Vec<ParamSection>),
+    Func { params: Vec<ParamSection>, result: TypeId },
 }
 
 #[derive(Debug, Clone)]
@@ -230,17 +230,92 @@ pub struct IndexTypeSpec {
 
 #[derive(Debug, Clone)]
 pub struct ProcSig {
-    pub params: Vec<ParamId>,
+    pub params: Vec<ParamSection>,
     /// For the purposes of forward-declaration
     pub has_body: bool,
 }
 
+impl ProcSig {
+    pub fn params_iter(&self) -> ParamIter<'_> {
+        ParamIter { params: &self.params, section_cursor: 0, param_cursor: 0 }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FuncSig {
-    pub params: Vec<ParamId>,
+    pub params: Vec<ParamSection>,
     pub result: TypeId,
     /// For the purposes of forward-declaration
     pub has_body: bool,
+}
+
+impl FuncSig {
+    pub fn params_iter(&self) -> ParamIter<'_> {
+        ParamIter { params: &self.params, section_cursor: 0, param_cursor: 0 }
+    }
+}
+
+// Overkill but I don't want to waste allocations
+pub struct ParamIter<'sig> {
+    params: &'sig [ParamSection],
+    section_cursor: usize,
+    param_cursor: usize,
+}
+
+impl<'sig> ParamIter<'sig> {
+    pub fn from(params: &'sig [ParamSection]) -> Self {
+        ParamIter { params, section_cursor: 0, param_cursor: 0 }
+    }
+}
+
+impl Iterator for ParamIter<'_> {
+    type Item = ParamId;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.section_cursor < self.params.len() {
+            match &self.params[self.section_cursor] {
+                ParamSection::One(param_id) => {
+                    self.section_cursor += 1;
+                    Some(*param_id)
+                }
+                ParamSection::Many(param_ids) => {
+                    if self.param_cursor == param_ids.len() {
+                        self.section_cursor += 1;
+                        self.param_cursor = 0;
+                        self.next()
+                    } else {
+                        let param = param_ids[self.param_cursor];
+                        self.param_cursor += 1;
+                        Some(param)
+                    }
+                }
+            }
+        } else {
+            None
+        }
+    }
+}
+
+// Little sanity check never hurts :P
+#[test]
+fn param_iter_test() {
+    let sig = ProcSig {
+        params: vec![
+            ParamSection::One(ParamId(0)),
+            ParamSection::Many(vec![ParamId(1), ParamId(2), ParamId(3)]),
+            ParamSection::One(ParamId(4)),
+        ],
+        has_body: false,
+    };
+    let expected = [ParamId(0), ParamId(1), ParamId(2), ParamId(3), ParamId(4)];
+    assert_eq!(sig.params_iter().collect::<Vec<_>>(), expected);
+}
+
+#[derive(Debug, Clone)]
+pub enum ParamSection {
+    One(ParamId),
+    // TODO: Use a `smallvec::SmallVec`
+    Many(Vec<ParamId>),
 }
 
 impl TypingContext {

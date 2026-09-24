@@ -1,4 +1,4 @@
-use std::{cell::RefCell, fmt::Debug, ops::Deref};
+use std::{cell::RefCell, fmt::Debug};
 
 use builtins::{Builtin, BuiltinConst, BuiltinFunc, BuiltinProc, BuiltinType, BuiltinVar};
 use context::{
@@ -13,7 +13,7 @@ mod context;
 
 use crate::{
     ast::{Ident, UnspanIdent, expr as e, program as p, stmt as s},
-    sema::context::{FieldId, TypeKind, VariantPart},
+    sema::context::{FieldId, ParamIter, ParamSection, TypeKind, VariantPart},
     utils::{Span, Spanned},
 };
 
@@ -120,6 +120,11 @@ pub enum AnalysisError {
         at: Span,
     },
     UndeclaredLabel(Span),
+    RoutineParamsShapeMismatch {
+        formal: ParamId,
+        actual: DefId,
+        origin: Span,
+    },
 }
 
 pub type AnalysisResult<T> = Result<T, AnalysisError>;
@@ -318,37 +323,148 @@ impl<'ast> Analyser {
             self.context.lookup_label(label.node, label.span)?;
         }
         match &stmt.node {
-            s::Stmt::Empty => Ok(()),
+            s::Stmt::Empty => (),
             s::Stmt::Assign { var, value } => {
                 if let (Some((func_name, result_type)), e::Var::Plain(name)) = (func, &var.node)
                     && func_name.node == *name
                 {
                     let value_type =
                         self.infer_expr(value.as_ref(), Some((result_type, func_name.span)))?;
-                    self.context.check_assign_compat(result_type, value_type, stmt.span)
+                    self.context.check_assign_compat(result_type, value_type, stmt.span)?;
                 } else {
                     let var_type = self.infer_var(var.as_ref())?;
                     let value_type = self.infer_expr(value.as_ref(), Some((var_type, var.span)))?;
-                    self.context.check_assign_compat(var_type, value_type, stmt.span)
+                    self.context.check_assign_compat(var_type, value_type, stmt.span)?;
                 }
             }
             s::Stmt::ReadCall(_read_params) => todo!(),
             s::Stmt::ReadlnCall(_read_params) => todo!(),
             s::Stmt::WriteCall(_write_params) => todo!(),
             s::Stmt::WritelnCall(_write_params) => todo!(),
-            s::Stmt::ProcCall { name, args } => self.check_proc_call(*name, args.as_deref()),
+            s::Stmt::ProcCall { name, args } => self.check_proc_call(*name, args.as_deref())?,
             s::Stmt::Goto(label) => {
                 self.context.lookup_label(*label, stmt.span)?;
-                Ok(())
             }
-            s::Stmt::Compound(spanneds) => todo!(),
-            s::Stmt::If { cond, then, r#else } => todo!(),
-            s::Stmt::Case { index, cases } => todo!(),
-            s::Stmt::While { cond, body } => todo!(),
-            s::Stmt::Repeat { body, cond } => todo!(),
-            s::Stmt::For { control_var, from, direction, to, body } => todo!(),
-            s::Stmt::With { vars, body } => todo!(),
+            s::Stmt::Compound(stmts) => {
+                self.context.enter_scope();
+                for stmt in stmts {
+                    self.check_stmt(stmt.as_ref(), func)?;
+                }
+                self.context.exit_scope();
+            }
+            s::Stmt::If { cond, then, r#else } => {
+                let cond_type = self.infer_expr(cond.as_ref(), None)?;
+                if cond_type != self.context.boolean.into() {
+                    return Err(AnalysisError::TypeMismatch {
+                        got: cond_type,
+                        at: cond.span,
+                        expected: self.context.boolean.into(),
+                        origin: stmt.span,
+                    });
+                }
+                self.check_stmt(then.as_ref(), func)?;
+                if let Some(r#else) = r#else {
+                    self.check_stmt(r#else.as_ref(), func)?;
+                }
+            }
+            s::Stmt::Case { index, cases } => {
+                let index_type = self.infer_expr(index.as_ref(), None)?;
+                for case in &cases.node {
+                    let s::Case { labels, body } = &case.node;
+                    for label in &labels.node {
+                        let (label_type, _label_const) =
+                            self.context.convert_constexpr(label.as_ref())?;
+                        if index_type != label_type {
+                            return Err(AnalysisError::TypeMismatch {
+                                got: label_type,
+                                at: label.span,
+                                expected: index_type,
+                                origin: labels.span,
+                            });
+                        }
+                    }
+                    self.check_stmt(body.as_ref(), func)?;
+                }
+            }
+            s::Stmt::While { cond, body } => {
+                let cond_type = self.infer_expr(cond.as_ref(), None)?;
+                if cond_type != self.context.boolean.into() {
+                    return Err(AnalysisError::TypeMismatch {
+                        got: cond_type,
+                        at: cond.span,
+                        expected: self.context.boolean.into(),
+                        origin: stmt.span,
+                    });
+                }
+                self.check_stmt(body.as_ref(), func)?;
+            }
+            s::Stmt::Repeat { body, cond } => {
+                self.context.enter_scope();
+                for stmt in &body.node {
+                    self.check_stmt(stmt.as_ref(), func)?;
+                }
+                self.context.exit_scope();
+                let cond_type = self.infer_expr(cond.as_ref(), None)?;
+                if cond_type != self.context.boolean.into() {
+                    return Err(AnalysisError::TypeMismatch {
+                        got: cond_type,
+                        at: cond.span,
+                        expected: self.context.boolean.into(),
+                        origin: stmt.span,
+                    });
+                }
+            }
+            s::Stmt::For { control_var, from, direction, to, body } => {
+                let from_type = self.infer_expr(from.as_ref(), None)?;
+                let to_type = self.infer_expr(to.as_ref(), None)?;
+                if from_type != to_type {
+                    return Err(AnalysisError::TypeMismatch {
+                        got: to_type,
+                        at: to.span,
+                        expected: from_type,
+                        origin: stmt.span,
+                    });
+                }
+                self.context.enter_scope();
+                self.context.insert_def(
+                    control_var.node,
+                    DefKind::Var(from_type),
+                    control_var.span,
+                );
+                self.check_stmt(body.as_ref(), func)?;
+                self.context.exit_scope();
+            }
+            s::Stmt::With { vars, body } => {
+                self.context.enter_scope();
+                for var in &vars.node {
+                    let var_type = self.infer_var(var.as_ref())?;
+                    let TypeKind::Record { packed, fixed, variant } =
+                        self.context.get_type(var_type)
+                    else {
+                        return Err(AnalysisError::MismatchType {
+                            got: var_type,
+                            at: var.span,
+                            expected: "record variable",
+                            reason: stmt.span,
+                        });
+                    };
+                    let fields: Vec<_> =
+                        Self::get_fields(fixed, variant.as_ref()).cloned().collect();
+                    for field in fields {
+                        let DefPoint::UserDef { name, kind, span } =
+                            self.context.get_def(field.into()).clone()
+                        else {
+                            unreachable!()
+                        };
+                        self.context.insert_def(name, kind, span);
+                    }
+                }
+                self.check_stmt(body.as_ref(), func)?;
+                self.context.exit_scope();
+            }
         }
+
+        Ok(())
     }
 
     fn check_proc_call(
@@ -370,61 +486,86 @@ impl<'ast> Analyser {
         self.check_args(&params, args, span)
     }
 
-    fn load_params(&mut self, params: &[ParamId]) {
-        for param in params {
-            let param_def = (*param).into();
+    fn load_params(&mut self, params: &[ParamSection]) {
+        for param in ParamIter::from(params) {
+            let param_def = param.into();
             let param_name = self.context.get_def_name(param_def);
             self.context.curr_scope_mut().insert(param_name, param_def);
         }
     }
 
-    fn convert_params(&mut self, params: &[Spanned<p::Param>]) -> AnalysisResult<Vec<ParamId>> {
+    fn convert_params(
+        &mut self,
+        params: &[Spanned<p::Param>],
+    ) -> AnalysisResult<Vec<ParamSection>> {
         let mut new_params = Vec::with_capacity(params.len()); // underestimate
         for param in params {
             match &param.node {
                 p::Param::Value(names, r#type) => {
-                    let r#type = self.convert_param_type(r#type.as_ref())?;
-                    for name in &names.node {
-                        new_params.push(self.context.create_param(
-                            name.node,
-                            param.span,
-                            ParamKind::Value(r#type.clone()),
-                        ));
-                    }
+                    let section =
+                        self.convert_param_section(&names.node, r#type.as_ref(), ParamKind::Value)?;
+                    new_params.push(section);
                 }
                 p::Param::Var(names, r#type) => {
-                    let r#type = self.convert_param_type(r#type.as_ref())?;
-                    for name in &names.node {
-                        new_params.push(self.context.create_param(
-                            name.node,
-                            param.span,
-                            ParamKind::Var(r#type.clone()),
-                        ));
-                    }
+                    let section =
+                        self.convert_param_section(&names.node, r#type.as_ref(), ParamKind::Var)?;
+                    new_params.push(section);
                 }
                 p::Param::Proc(proc_sig) => {
                     let params = self.convert_params(&proc_sig.params)?;
-                    new_params.push(self.context.create_param(
+                    new_params.push(ParamSection::One(self.context.create_param(
                         proc_sig.name.node,
                         param.span,
                         ParamKind::Proc(params),
-                    ));
+                    )));
                 }
                 p::Param::Func(func_sig) => {
                     let params = self.convert_params(&func_sig.params.node)?;
                     let result =
                         self.context.lookup_type(func_sig.result.node, func_sig.result.span)?;
 
-                    new_params.push(self.context.create_param(
+                    new_params.push(ParamSection::One(self.context.create_param(
                         func_sig.name.node,
                         param.span,
                         ParamKind::Func { params, result },
-                    ));
+                    )));
                 }
             }
         }
 
         Ok(new_params)
+    }
+
+    fn convert_param_section(
+        &mut self,
+        names: &[Ident],
+        r#type: Spanned<&p::ParamType>,
+        param_kind_ctor: fn(ParamType) -> ParamKind,
+    ) -> AnalysisResult<ParamSection> {
+        let r#type = self.convert_param_type(r#type)?;
+        match names {
+            &[] => unreachable!(),
+            &[sole] => Ok(ParamSection::One(self.context.create_param(
+                sole.node,
+                sole.span,
+                param_kind_ctor(r#type),
+            ))),
+            &[first, ref rest @ ..] => {
+                let mut many = Vec::from([self.context.create_param(
+                    first.node,
+                    first.span,
+                    param_kind_ctor(r#type.clone()),
+                )]);
+                for name in rest {
+                    many.push(self.context.create_param(
+                        name.node,
+                        name.span,
+                        param_kind_ctor(r#type.clone()),
+                    ));
+                }
+                Ok(ParamSection::Many(many))
+            }
+        }
     }
 
     fn convert_param_type(&mut self, r#type: Spanned<&p::ParamType>) -> AnalysisResult<ParamType> {
@@ -563,18 +704,17 @@ impl<'ast> Analyser {
 
     fn check_args(
         &mut self,
-        params: &[ParamId],
+        params: &[ParamSection],
         args: Spanned<&[e::SpanExpr]>,
         call_span: Span,
     ) -> AnalysisResult<()> {
-        let params: Vec<_> = params
-            .iter()
+        let params: Vec<_> = ParamIter::from(params)
             .map(|param_id| {
-                let param_def = (*param_id).into();
+                let param_def = param_id.into();
                 if let DefPoint::UserDef { kind: DefKind::Param(param), span, .. } =
                     self.context.get_def(param_def)
                 {
-                    (*param_id, param.clone(), *span)
+                    (param_id, param.clone(), *span)
                 } else {
                     unreachable!()
                 }
@@ -701,74 +841,114 @@ impl<'ast> Analyser {
         &self,
         formal: ParamId,
         actual: DefId,
-        formal_params: &[ParamId],
-        actual_params: &[ParamId],
+        formal_params: &[ParamSection],
+        actual_params: &[ParamSection],
         origin: Span,
     ) -> AnalysisResult<()> {
+        let formal_flat_count = ParamIter::from(formal_params).count();
+        let actual_flat_count = ParamIter::from(actual_params).count();
+
+        if formal_params.len() != actual_params.len() || formal_flat_count != actual_flat_count {
+            return Err(AnalysisError::RoutineParamsShapeMismatch { formal, actual, origin });
+        }
+
         for (formal_param, actual_param) in
             formal_params.iter().cloned().zip(actual_params.iter().cloned())
         {
-            let DefPoint::UserDef { name, kind: DefKind::Param(formal_kind), span: formal_span } =
-                self.context.get_def((formal_param).into())
-            else {
-                unreachable!()
-            };
-            let DefPoint::UserDef { name, kind: DefKind::Param(actual_kind), span: actual_span } =
-                self.context.get_def((actual_param).into())
-            else {
-                unreachable!()
-            };
-
-            match (formal_kind, actual_kind) {
-                (
-                    ParamKind::Value(ParamType::TypeIdent(t1)),
-                    ParamKind::Value(ParamType::TypeIdent(t2)),
-                )
-                | (
-                    ParamKind::Var(ParamType::TypeIdent(t1)),
-                    ParamKind::Var(ParamType::TypeIdent(t2)),
-                ) if t1 == t2 => (),
-                (ParamKind::Proc(ps1), ParamKind::Proc(ps2)) => {
-                    self.check_param_lists_congruity(
-                        formal_param,
-                        actual_param.into(),
-                        ps1,
-                        ps2,
-                        origin,
-                    )?;
+            match (formal_param, actual_param) {
+                (ParamSection::One(p1), ParamSection::One(p2)) => {
+                    self.check_params_congruity(formal, actual, p1, p2, origin)?;
                 }
-                (
-                    ParamKind::Func { params: ps1, result: r1 },
-                    ParamKind::Func { params: ps2, result: r2 },
-                ) => {
-                    self.check_param_lists_congruity(
-                        formal_param,
-                        actual_param.into(),
-                        ps1,
-                        ps2,
-                        origin,
-                    )?;
-                    if r1 != r2 {
-                        return Err(AnalysisError::TypeMismatch {
-                            got: *r2,
-                            at: *actual_span,
-                            expected: *r1,
+                (ParamSection::Many(ps1), ParamSection::Many(ps2)) => {
+                    if ps1.len() == ps2.len() {
+                        for (p1, p2) in ps1.iter().cloned().zip(ps2.iter().cloned()) {
+                            self.check_params_congruity(formal, actual, p1, p2, origin)?;
+                        }
+                    } else {
+                        return Err(AnalysisError::RoutineParamsShapeMismatch {
+                            formal,
+                            actual,
                             origin,
                         });
                     }
                 }
                 _ => {
-                    return Err(AnalysisError::Incongruous {
+                    return Err(AnalysisError::RoutineParamsShapeMismatch {
                         formal,
                         actual,
-                        formal_param,
-                        actual_param,
                         origin,
                     });
                 }
             }
         }
         Ok(())
+    }
+
+    fn check_params_congruity(
+        &self,
+        formal: ParamId,
+        actual: DefId,
+        formal_param: ParamId,
+        actual_param: ParamId,
+        origin: Span,
+    ) -> AnalysisResult<()> {
+        let DefPoint::UserDef { kind: DefKind::Param(formal_kind), .. } =
+            self.context.get_def((formal_param).into())
+        else {
+            unreachable!()
+        };
+        let DefPoint::UserDef { kind: DefKind::Param(actual_kind), span: actual_span, .. } =
+            self.context.get_def((actual_param).into())
+        else {
+            unreachable!()
+        };
+
+        match (formal_kind, actual_kind) {
+            (
+                ParamKind::Value(ParamType::TypeIdent(t1)),
+                ParamKind::Value(ParamType::TypeIdent(t2)),
+            )
+            | (
+                ParamKind::Var(ParamType::TypeIdent(t1)),
+                ParamKind::Var(ParamType::TypeIdent(t2)),
+            ) if t1 == t2 => Ok(()),
+            (ParamKind::Proc(ps1), ParamKind::Proc(ps2)) => self.check_param_lists_congruity(
+                formal_param,
+                actual_param.into(),
+                ps1,
+                ps2,
+                origin,
+            ),
+            (
+                ParamKind::Func { params: ps1, result: r1 },
+                ParamKind::Func { params: ps2, result: r2 },
+            ) => {
+                self.check_param_lists_congruity(
+                    formal_param,
+                    actual_param.into(),
+                    ps1,
+                    ps2,
+                    origin,
+                )?;
+                if r1 == r2 {
+                    Ok(())
+                } else {
+                    Err(AnalysisError::TypeMismatch {
+                        got: *r2,
+                        at: *actual_span,
+                        expected: *r1,
+                        origin,
+                    })
+                }
+            }
+            _ => Err(AnalysisError::Incongruous {
+                formal,
+                actual,
+                formal_param,
+                actual_param,
+                origin,
+            }),
+        }
     }
 
     fn infer_var(&mut self, var: Spanned<&e::Var>) -> AnalysisResult<TypeId> {

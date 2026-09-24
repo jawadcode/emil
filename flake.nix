@@ -42,7 +42,22 @@
           let
             devShellOpts = {
               checks = self.checks.${system};
-              packages = with pkgs; [ taplo lldb pasfmt ];
+              packages = with pkgs; [
+                taplo
+                lldb
+                pasfmt
+                jq
+                (pkgs.writeShellApplication {
+                  name = "cargo-errors";
+                  runtimeInputs = [ pkgs.jq ];
+                  text = ''
+                    cargo check --message-format=json | jq -r '
+                      select(.reason == "compiler-message" and .message.level == "error")
+                      | .message.rendered
+                    '
+                  '';
+                })
+              ];
             };
             emilDevShell = craneLib.devShell devShellOpts;
           in
