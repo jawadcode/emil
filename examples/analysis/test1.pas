@@ -9,11 +9,11 @@ var
 
 procedure Printeger(int: Integer); forward;
 
-function Identity(elem: Integer): Integer;
+function Identity(x: Integer): Integer;
 const
   IdentityElement = 0;
 begin
-  Identity := elem + IdentityElement
+  Identity := x + IdentityElement
 end;
 
 procedure Printeger;
