@@ -10,7 +10,7 @@ A pascal compiler, named after the legend Niklaus Emil Wirth.
 * [ ] Work on a backend written from scratch, with the help of Cooper & Torczon's 'Engineering a Compiler'
 * [ ] Focus on making compiler a "complying processor", enforcing the full range of errors correctly
   * [ ] Enhance diagnostics, using standard terminology where it isn't needlessly confusing/complex
-* [ ] Begin extending the implementation with \[gated\] usability features, choosing from from the following:
+* [ ] Begin extending the implementation with extra features (gated behind flags). Some inspiration for these features:
   * Extended Pascal per ISO 10206:1990:
     * [ ] Modules/interfaces and separate compilation
     * [ ] Schemata - seem a little complex, may be out-of-scope for this project
