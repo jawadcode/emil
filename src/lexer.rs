@@ -3,7 +3,7 @@ use std::{
     num::NonZero,
 };
 
-use lexical_core::{parse_with_options, NumberFormatBuilder, ParseFloatOptions};
+use lexical_core::{NumberFormatBuilder, ParseFloatOptions, parse_with_options};
 use logos::{Lexer as LogosLexer, Logos, Skip, SpannedIter};
 
 use crate::utils::Spanned;

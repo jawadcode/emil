@@ -5,16 +5,16 @@ use crate::{
             Case, CompoundStmt, ForDirection, MaybeLabelledStmt, Stmt, WriteParam, WriteParamSpecs,
         },
     },
-    lexer::{parse_unsigned_integer, TokenKind},
-    parser::{add_span_opt, empty_list, expr::VAR_EXT_START, Builtin},
+    lexer::TokenKind,
+    parser::{Builtin, add_span_opt, empty_list, expr::VAR_EXT_START},
     utils::Spanned,
 };
 
 use super::{
+    ParserState, SpanParseResult,
     expr::{args, expr, var, var_ext},
     parse_label,
     program::constexpr,
-    ParserState, SpanParseResult,
 };
 
 pub fn compound_stmt<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<CompoundStmt> {

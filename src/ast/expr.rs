@@ -12,11 +12,12 @@ pub enum Expr {
     Nil,
     UIntLit(u64),
     URealLit(f64),
+    CharLit(u8),
     StrLit(String),
     Set(Vec<Spanned<SetMember>>),
     FuncCall { name: Ident, args: Spanned<Args> },
-    UnaryOp { op: UnaryOp, operand: Box<SpanExpr> },
-    BinOp { op: BinOp, left: Box<SpanExpr>, right: Box<SpanExpr> },
+    UnaryOp { op: Spanned<UnaryOp>, operand: Box<SpanExpr> },
+    BinOp { op: Spanned<BinOp>, left: Box<SpanExpr>, right: Box<SpanExpr> },
 }
 
 pub type SpanVar = Spanned<Var>;
@@ -57,7 +58,7 @@ impl From<TokenKind> for UnaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum BinOp {
-    Mult,
+    Mul,
     Quot,
     Div,
     Mod,
@@ -79,7 +80,7 @@ pub enum BinOp {
 impl From<TokenKind> for BinOp {
     fn from(value: TokenKind) -> Self {
         match value {
-            TokenKind::Asterisk => Self::Mult,
+            TokenKind::Asterisk => Self::Mul,
             TokenKind::Slash => Self::Quot,
             TokenKind::Div => Self::Div,
             TokenKind::Mod => Self::Mod,

@@ -1,10 +1,11 @@
-use std::{collections::HashMap, iter, ops::RangeInclusive};
+use std::{collections::HashMap, ops::RangeInclusive};
 
 use crate::{
     ast::{
         self, UnspanIdent,
-        program::{ConstExpr, Param, SubrangeBound},
+        program::{ConstExpr, SubrangeBound},
     },
+    sema::Expected,
     utils::{Span, Spanned},
 };
 
@@ -28,9 +29,7 @@ pub struct TypingContext {
     pub boolean: OrdinalTypeId,
     pub char: OrdinalTypeId,
     pub text: TypeId,
-    /// For error diags only!!!
     pub pointer_of_t: TypeId,
-    /// For error diags only!!!
     pub set_of_t: TypeId,
 }
 
@@ -54,7 +53,7 @@ pub enum Constant {
     Int(i64),
     Real(f64),
     Bool(bool),
-    Char(char),
+    Char(u8),
     Str(StringId),
     Enum { r#enum: TypeId, member_idx: usize },
     // Constants should be fully resolved on insertion so we shouldn't need this anymore
@@ -94,14 +93,14 @@ pub enum TypeKind {
     },
     Set {
         packed: bool,
-        elem: OrdinalTypeId,
+        member_ty: OrdinalTypeId,
     },
     File(TypeId),
     Pointer(TypeId),
 
-    /* FOR ERROR DIAGNOSTICS ONLY */
-    // `nil` and `[]` are type-checked eagerly against an expected type
+    /// The type of `nil`
     PointerOfT,
+    /// The type of `[]`
     SetOfT,
 }
 
@@ -386,7 +385,7 @@ impl TypingContext {
                     }
                     AUnpackStructTy::Set(elem) => self
                         .convert_ordinal_type(elem, ty.span)
-                        .map(|elem| self.fresh(TypeKind::Set { packed, elem })),
+                        .map(|elem| self.fresh(TypeKind::Set { packed, member_ty: elem })),
                     AUnpackStructTy::File(r#type) => self
                         .convert_type(r#type.as_ref())
                         .map(|component| self.fresh(TypeKind::File(component))),
@@ -465,8 +464,8 @@ impl TypingContext {
                 Err(AnalysisError::TypeMismatch {
                     got: upper_type.into(),
                     at: upper.span,
-                    expected: lower_type.into(),
-                    origin: subr_span,
+                    expected: Expected::One(lower_type.into()),
+                    reason: subr_span,
                 })
             }
         }
@@ -547,10 +546,10 @@ impl TypingContext {
             | TypeKind::Integer
             | TypeKind::Boolean
             | TypeKind::Char => Ok(OrdinalTypeId(id)),
-            _ => Err(AnalysisError::MismatchType {
+            _ => Err(AnalysisError::TypeMismatch {
                 got: r#type,
                 at: bound_span,
-                expected: Self::ORD_MSG,
+                expected: Expected::Abstract(Self::ORD_MSG),
                 reason: subr_span,
             }),
         }
@@ -678,19 +677,20 @@ impl TypingContext {
             ConstExpr::NumLitOrIdent { is_pos, lit } => {
                 let sign = if is_pos.unwrap_or(true) { 1i64 } else { -1 };
                 match lit {
-                    p::ConstExprLit::UIntLit(n) => {
+                    p::ConstExprNumLit::UIntLit(n) => {
                         Ok((self.integer.into(), Constant::Int(sign * (*n as i64))))
                     }
-                    p::ConstExprLit::URealLit(n) => {
-                        Ok((self.real, Constant::Real(sign as f64 * *n)))
+                    p::ConstExprNumLit::URealLit(n) => {
+                        Ok((self.real, Constant::Real(sign as f64 * n)))
                     }
-                    p::ConstExprLit::Ident(name) => self.lookup_const(*name, constexpr.span),
+                    p::ConstExprNumLit::Ident(name) => self.lookup_const(*name, constexpr.span),
                 }
             }
             ConstExpr::StrLit(str) => {
                 let str_type = self.infer_string(str);
                 Ok((str_type, Constant::Str(self.get_or_intern_string(str))))
             }
+            ConstExpr::CharLit(chr) => Ok((self.char.into(), Constant::Char(*chr))),
         }
     }
 
@@ -716,21 +716,53 @@ impl TypingContext {
             TypeKind::Boolean => self.boolean.into(),
             TypeKind::Char => self.char.into(),
             TypeKind::Text => self.text,
-            // Deduplicate set-types based on element type and packedness as per ze standard
-            kind @ TypeKind::Set { packed, elem } => {
+            // Oops, this was wrong, canonicalisation of set types should only be performed as needed, not immediately
+            // upon creation.
+            // kind @ TypeKind::Set { packed, elem } => {
+            //     if let Some(r#type) = self.canonical_sets.get(&(elem, packed)) {
+            //         *r#type
+            //     } else {
+            //         self.types.push(kind);
+            //         let id = TypeId(self.types.len() - 1);
+            //         self.canonical_sets.insert((elem, packed), id);
+            //         id
+            //     }
+            // }
+            kind => {
+                self.types.push(kind);
+                TypeId(self.types.len() - 1)
+            }
+        }
+    }
+
+    // pub fn get_canonical_set(&mut self, packed: bool, elem: OrdinalTypeId) -> TypeId {
+    //     if let Some(r#type) = self.canonical_sets.get(&(elem, packed)) {
+    //         *r#type
+    //     } else {
+    //         self.types.push(TypeKind::Set { packed, elem });
+    //         let id = TypeId(self.types.len() - 1);
+    //         self.canonical_sets.insert((elem, packed), id);
+    //         id
+    //     }
+    // }
+
+    // Feels icky discarding all this type info, but factors are to be treated as their (canonical|super)-type
+    // TODO: Consider if it is possible to bubble up information like subrange intervals as far as possible,
+    // eliminating excess runtime checks
+    pub fn widen_type(&mut self, r#type: TypeId) -> TypeId {
+        match *self.get_type(r#type) {
+            TypeKind::Subrange { host_type, .. } => host_type.into(),
+            TypeKind::Set { packed, member_ty: elem } => {
                 if let Some(r#type) = self.canonical_sets.get(&(elem, packed)) {
                     *r#type
                 } else {
-                    self.types.push(kind);
+                    self.types.push(TypeKind::Set { packed, member_ty: elem });
                     let id = TypeId(self.types.len() - 1);
                     self.canonical_sets.insert((elem, packed), id);
                     id
                 }
             }
-            kind => {
-                self.types.push(kind);
-                TypeId(self.types.len() - 1)
-            }
+            _ => r#type,
         }
     }
 
@@ -746,14 +778,16 @@ impl TypingContext {
             | TypeKind::Integer
             | TypeKind::Boolean
             | TypeKind::Char => Ok(OrdinalTypeId(r#type.0)),
-            _ => Err(AnalysisError::MismatchType {
+            _ => Err(AnalysisError::TypeMismatch {
                 got: r#type,
                 at,
-                expected: "ordinal type",
+                expected: Expected::Abstract("ordinal type"),
                 reason,
             }),
         }
     }
+
+    // TODO: Pass more span information to `check_compat` and `check_assign_compat`
 
     pub fn check_compat(&self, t1: TypeId, t2: TypeId, origin: Span) -> AnalysisResult<()> {
         if t1 == t2 {
@@ -767,8 +801,8 @@ impl TypingContext {
                 TypeKind::Subrange { host_type: ht2, .. },
             ) if ht1 == ht2 => Ok(()),
             (
-                TypeKind::Set { packed: p1, elem: elem1 },
-                TypeKind::Set { packed: p2, elem: elem2 },
+                TypeKind::Set { packed: p1, member_ty: elem1 },
+                TypeKind::Set { packed: p2, member_ty: elem2 },
             ) if p1 == p2 => self.check_compat((*elem1).into(), (*elem2).into(), origin),
             (
                 TypeKind::Array { packed: p1, indices: indices1, elem: elem1 },
@@ -810,18 +844,17 @@ impl TypingContext {
                 }
             }
             (
-                TypeKind::Set { packed: p1, elem: elem1 },
-                TypeKind::Set { packed: p2, elem: elem2 },
+                TypeKind::Set { packed: p1, member_ty: elem1 },
+                TypeKind::Set { packed: p2, member_ty: elem2 },
             ) if p1 == p2 => {
                 let range1 = self.get_interval(*elem1);
                 let range2 = self.get_interval(*elem2);
                 if range1.start() <= range2.start() && range1.last() >= range2.last() {
                     Ok(())
                 } else {
-                    Err(AnalysisError::IncompatibleTypes { got: t2, expected: t1, origin })
+                    Err(AnalysisError::AssignIncompatTypes { got: t2, expected: t1, origin })
                 }
             }
-            // DRY: Do Repeat Yourself
             (
                 TypeKind::Array { packed: p1, indices: indices1, elem: elem1 },
                 TypeKind::Array { packed: p2, indices: indices2, elem: elem2 },
@@ -834,7 +867,7 @@ impl TypingContext {
                 // A little wasteful
                 self.check_assign_compat(indices1[0].into(), indices2[0].into(), origin)
             }
-            _ => Err(AnalysisError::IncompatibleTypes { got: t2, expected: t1, origin }),
+            _ => Err(AnalysisError::AssignIncompatTypes { got: t2, expected: t1, origin }),
         }
     }
 
@@ -859,14 +892,15 @@ impl TypingContext {
             | TypeKind::Text
             | TypeKind::Enumerated { .. }
             | TypeKind::Subrange { .. }
-            | TypeKind::Set { .. } => false,
+            | TypeKind::Set { .. }
+            | TypeKind::SetOfT => false,
             TypeKind::Array { elem, .. } => self.contains_file_type(*elem),
             TypeKind::Record { fixed, variant, .. } => {
                 self.field_list_contains_file_type(fixed, variant.as_ref())
             }
             TypeKind::Pointer(r#type) => self.contains_file_type(*r#type),
             TypeKind::File(_) => true,
-            TypeKind::PointerOfT | TypeKind::SetOfT => unreachable!(),
+            TypeKind::PointerOfT => unreachable!(""),
         }
     }
 
@@ -1041,22 +1075,29 @@ impl TypingContext {
         }
     }
 
+    /* Just too tempting to inline all of these 😭 */
+
+    #[inline]
     pub fn enter_scope(&mut self) {
         self.scopes.push(Scope::default())
     }
 
+    #[inline]
     pub fn exit_scope(&mut self) {
         self.scopes.pop();
     }
 
+    #[inline]
     pub fn curr_scope(&self) -> &Scope {
         self.scopes.last().expect("Expected at least one scope")
     }
 
+    #[inline]
     pub fn curr_scope_mut(&mut self) -> &mut Scope {
         self.scopes.last_mut().expect("Expected at least one scope")
     }
 
+    #[inline]
     pub fn get_def(&self, def: DefId) -> &DefPoint {
         &self.defs[def.0]
     }
@@ -1073,14 +1114,17 @@ impl TypingContext {
         }
     }
 
+    #[inline]
     pub fn get_def_mut(&mut self, def: DefId) -> &mut DefPoint {
         &mut self.defs[def.0]
     }
 
+    #[inline]
     pub fn get_type(&self, r#type: TypeId) -> &TypeKind {
         &self.types[r#type.0]
     }
 
+    #[inline]
     fn get_or_intern_string(&mut self, s: &str) -> StringId {
         StringId(self.strings.get_or_intern(s))
     }

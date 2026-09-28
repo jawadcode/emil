@@ -12,15 +12,19 @@ mod builtins;
 mod context;
 
 use crate::{
-    ast::{Ident, UnspanIdent, expr as e, program as p, stmt as s},
-    sema::context::{FieldId, ParamIter, ParamSection, TypeKind, VariantPart},
+    ast::{
+        Ident, UnspanIdent, expr as e,
+        program::{self as p},
+        stmt as s,
+    },
+    sema::context::{FieldId, OrdinalTypeId, ParamIter, ParamSection, TypeKind, VariantPart},
     utils::{Span, Spanned},
 };
 
 pub struct Analyser {
     context: TypingContext,
     // TODO: Switch from using top-level `AnalysisResult<T>` to this
-    errors: Vec<AnalysisError>,
+    _errors: Vec<AnalysisError>,
     /// Must come from [`ParserState::yeehaw`]
     ///
     /// [`ParserState::yeehaw`]: ../../emil/parser/struct.ParserState.html "yeehaw"
@@ -28,6 +32,7 @@ pub struct Analyser {
     rodeo: Rodeo,
 }
 
+// TODO: Major major cleanup because wtf
 #[derive(Debug)]
 pub enum AnalysisError {
     Unbound {
@@ -67,19 +72,24 @@ pub enum AnalysisError {
         expected: &'static str,
         origin: Span,
     },
-    MismatchType {
-        got: TypeId,
-        at: Span,
-        expected: &'static str,
-        reason: Span,
-    },
+    // MismatchType {
+    //     got: TypeId,
+    //     at: Span,
+    //     expected: &'static str,
+    //     reason: Span,
+    // },
     TypeMismatch {
         got: TypeId,
         at: Span,
+        expected: Expected,
+        reason: Span,
+    },
+    IncompatibleTypes {
+        got: TypeId,
         expected: TypeId,
         origin: Span,
     },
-    IncompatibleTypes {
+    AssignIncompatTypes {
         got: TypeId,
         expected: TypeId,
         origin: Span,
@@ -122,9 +132,24 @@ pub enum AnalysisError {
     UndeclaredLabel(Span),
     RoutineParamsShapeMismatch {
         formal: ParamId,
+        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_) | DefKind::Func(_), .. }`
         actual: DefId,
         origin: Span,
     },
+    MemberTypeMismatch {
+        member_type: OrdinalTypeId,
+        at: Span,
+        /// Guaranteed to be `TypeKind::Set { .. }`
+        set_type: TypeId,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub enum Expected {
+    One(TypeId),
+    // TODO: Use a `smallvec::SmallVec`
+    Many(Vec<TypeId>),
+    Abstract(&'static str),
 }
 
 pub type AnalysisResult<T> = Result<T, AnalysisError>;
@@ -143,7 +168,7 @@ impl<'ast> Analyser {
 
         let rodeo = rodeo.into_inner(); // RefCell goes poof
 
-        Self { context, errors: Vec::new(), rodeo }
+        Self { context, _errors: Vec::new(), rodeo }
     }
 
     pub fn check_program(&mut self, program: &'ast p::Program) -> AnalysisResult<()> {
@@ -358,8 +383,8 @@ impl<'ast> Analyser {
                     return Err(AnalysisError::TypeMismatch {
                         got: cond_type,
                         at: cond.span,
-                        expected: self.context.boolean.into(),
-                        origin: stmt.span,
+                        expected: Expected::One(self.context.boolean.into()),
+                        reason: stmt.span,
                     });
                 }
                 self.check_stmt(then.as_ref(), func)?;
@@ -378,8 +403,8 @@ impl<'ast> Analyser {
                             return Err(AnalysisError::TypeMismatch {
                                 got: label_type,
                                 at: label.span,
-                                expected: index_type,
-                                origin: labels.span,
+                                expected: Expected::One(index_type),
+                                reason: labels.span,
                             });
                         }
                     }
@@ -392,8 +417,8 @@ impl<'ast> Analyser {
                     return Err(AnalysisError::TypeMismatch {
                         got: cond_type,
                         at: cond.span,
-                        expected: self.context.boolean.into(),
-                        origin: stmt.span,
+                        expected: Expected::One(self.context.boolean.into()),
+                        reason: stmt.span,
                     });
                 }
                 self.check_stmt(body.as_ref(), func)?;
@@ -409,8 +434,8 @@ impl<'ast> Analyser {
                     return Err(AnalysisError::TypeMismatch {
                         got: cond_type,
                         at: cond.span,
-                        expected: self.context.boolean.into(),
-                        origin: stmt.span,
+                        expected: Expected::One(self.context.boolean.into()),
+                        reason: stmt.span,
                     });
                 }
             }
@@ -421,8 +446,8 @@ impl<'ast> Analyser {
                     return Err(AnalysisError::TypeMismatch {
                         got: to_type,
                         at: to.span,
-                        expected: from_type,
-                        origin: stmt.span,
+                        expected: Expected::One(from_type),
+                        reason: stmt.span,
                     });
                 }
                 self.context.enter_scope();
@@ -441,10 +466,10 @@ impl<'ast> Analyser {
                     let TypeKind::Record { packed, fixed, variant } =
                         self.context.get_type(var_type)
                     else {
-                        return Err(AnalysisError::MismatchType {
+                        return Err(AnalysisError::TypeMismatch {
                             got: var_type,
                             at: var.span,
-                            expected: "record variable",
+                            expected: Expected::Abstract("record variable"),
                             reason: stmt.span,
                         });
                     };
@@ -579,6 +604,10 @@ impl<'ast> Analyser {
         }
     }
 
+    /// # Parameters
+    ///
+    /// * `expected` - This information is exclusively for inferring the concrete type of `nil` and set literals, in
+    ///   cases where neither of those kinds of expressions are expected, `None` should be passed.
     fn infer_expr(
         &mut self,
         expr: Spanned<&e::Expr>,
@@ -587,58 +616,400 @@ impl<'ast> Analyser {
         match expr.node {
             e::Expr::Var(var) => self.infer_var(expr.map(|_| var)),
             e::Expr::Nil => {
-                if let Some((expected, origin)) = expected {
-                    if let TypeKind::Pointer(inner_type) = self.context.get_type(expected) {
+                if let Some((expected, reason)) = expected {
+                    if let TypeKind::Pointer(_) = self.context.get_type(expected) {
                         Ok(expected)
                     } else {
                         Err(AnalysisError::TypeMismatch {
                             got: self.context.pointer_of_t,
                             at: expr.span,
-                            expected,
-                            origin,
+                            expected: Expected::One(expected),
+                            reason,
                         })
                     }
                 } else {
-                    Err(AnalysisError::UnexpectedNil(expr.span))
+                    Ok(self.context.pointer_of_t)
                 }
             }
             e::Expr::UIntLit(_) => Ok(self.context.integer.into()),
             e::Expr::URealLit(_) => Ok(self.context.real),
+            e::Expr::CharLit(_) => Ok(self.context.char.into()),
             e::Expr::StrLit(str) => Ok(self.context.infer_string(str)),
-            e::Expr::Set(elements) => self.infer_set(elements, expected, expr.span),
+            e::Expr::Set(members) => self.infer_set(members, expr.span, expected),
             e::Expr::FuncCall { name, args } => {
                 self.infer_fun_call(*name, args.as_deref(), expr.span)
             }
-            e::Expr::UnaryOp { op, operand } => todo!(),
-            e::Expr::BinOp { op, left, right } => todo!(),
+            e::Expr::UnaryOp { op, operand } => self.infer_unary_op(*op, operand.as_ref().as_ref()),
+            e::Expr::BinOp { op, left, right } => self.infer_binop(
+                *op,
+                left.as_ref().as_ref(),
+                right.as_ref().as_ref(),
+                expr.span,
+                expected,
+            ),
+        }
+    }
+
+    fn infer_unary_op(
+        &mut self,
+        op: Spanned<e::UnaryOp>,
+        operand: Spanned<&e::Expr>,
+    ) -> AnalysisResult<TypeId> {
+        let operand_type = self.infer_expr(operand, None)?;
+        match op.node {
+            e::UnaryOp::Not if operand_type != self.context.boolean.into() => {
+                Err(AnalysisError::TypeMismatch {
+                    got: operand_type,
+                    at: operand.span,
+                    expected: Expected::One(self.context.boolean.into()),
+                    reason: op.span,
+                })
+            }
+            e::UnaryOp::Identity
+                if [self.context.integer.into(), self.context.real].contains(&operand_type) =>
+            {
+                Err(AnalysisError::TypeMismatch {
+                    got: operand_type,
+                    at: operand.span,
+                    expected: Expected::Abstract("Integer or Real"),
+                    reason: op.span,
+                })
+            }
+            e::UnaryOp::Negation
+                if [self.context.integer.into(), self.context.real].contains(&operand_type) =>
+            {
+                Err(AnalysisError::TypeMismatch {
+                    got: operand_type,
+                    at: operand.span,
+                    expected: Expected::Abstract("Integer or Real"),
+                    reason: op.span,
+                })
+            }
+            _ => Ok(operand_type),
+        }
+    }
+
+    // This function feels like a war crime 😭
+    fn infer_binop(
+        &mut self,
+        op: Spanned<e::BinOp>,
+        left: Spanned<&e::Expr>,
+        right: Spanned<&e::Expr>,
+        expr_span: Span,
+        expected: Option<(TypeId, Span)>,
+    ) -> AnalysisResult<TypeId> {
+        // If the operator is a valid set operator which also outputs a set, the expected type is significant
+        let expected = if let e::BinOp::Add | e::BinOp::Sub | e::BinOp::Mul = op.node {
+            expected
+        } else {
+            None
+        };
+
+        let left_type = self.infer_expr(left, expected)?;
+        let left = left.map(|_| self.context.widen_type(left_type));
+
+        let right_type = self.infer_expr(right, expected)?;
+        let right = right.map(|_| self.context.widen_type(right_type));
+
+        let (int, real, boole) =
+            (self.context.integer.into(), self.context.real, self.context.boolean.into());
+        let num = [int, real];
+
+        let left_type_kind = self.context.get_type(left_type).clone();
+        let right_type_kind = self.context.get_type(right_type).clone();
+
+        match op.node {
+            e::BinOp::Add | e::BinOp::Sub | e::BinOp::Mul => {
+                if num.contains(&left_type) {
+                    if num.contains(&right_type) {
+                        match (left_type_kind, right_type_kind) {
+                            (TypeKind::Integer, TypeKind::Integer) => Ok(int),
+                            _ => Ok(real),
+                        }
+                    } else {
+                        Err(AnalysisError::TypeMismatch {
+                            got: right_type,
+                            at: right.span,
+                            expected: Expected::Abstract("Integer, Real or Set of T"),
+                            reason: op.span,
+                        })
+                    }
+                } else if let Some(target) = self.infer_set_type_operands::<false>(
+                    left,
+                    right,
+                    &left_type_kind,
+                    &right_type_kind,
+                    op.span,
+                )? {
+                    Ok(target)
+                } else {
+                    Err(AnalysisError::TypeMismatch {
+                        got: left_type,
+                        at: left.span,
+                        expected: Expected::Abstract("Integer, Real or Set of T"),
+                        reason: op.span,
+                    })
+                }
+            }
+            e::BinOp::Quot => self.infer_binop_simple(&num, left, right, real, op.span),
+            e::BinOp::Div | e::BinOp::Mod => {
+                self.infer_binop_simple(&[int], left, right, int, op.span)
+            }
+            e::BinOp::And | e::BinOp::Or => {
+                self.infer_binop_simple(&[boole], left, right, boole, op.span)
+            }
+            e::BinOp::Eq | e::BinOp::NEq => {
+                if self.infer_binop_cmp_common(
+                    left,
+                    right,
+                    &left_type_kind,
+                    &right_type_kind,
+                    op.span,
+                )? {
+                    Ok(boole)
+                } else if let TypeKind::Pointer(_) = left_type_kind {
+                    if let TypeKind::Pointer(_) = right_type_kind
+                        && left_type == right_type
+                    {
+                        Ok(boole)
+                    } else if let TypeKind::PointerOfT = right_type_kind {
+                        Ok(boole)
+                    } else {
+                        Err(AnalysisError::TypeMismatch {
+                            got: right_type,
+                            at: right.span,
+                            expected: Expected::One(left_type),
+                            reason: op.span,
+                        })
+                    }
+                } else if let (TypeKind::PointerOfT, TypeKind::Pointer(_)) =
+                    (&left_type_kind, &right_type_kind)
+                {
+                    Ok(boole)
+                } else if let Some(target) = self.infer_set_type_operands::<true>(
+                    left,
+                    right,
+                    &left_type_kind,
+                    &right_type_kind,
+                    op.span,
+                )? {
+                    Ok(target)
+                } else {
+                    Err(AnalysisError::TypeMismatch {
+                        got: left_type,
+                        at: left.span,
+                        expected: Expected::Abstract(
+                            "simple-type, Pointer of T, string-type or Set of T",
+                        ),
+                        reason: op.span,
+                    })
+                }
+            }
+            e::BinOp::LT | e::BinOp::GT => {
+                if self.infer_binop_cmp_common(
+                    left,
+                    right,
+                    &left_type_kind,
+                    &right_type_kind,
+                    op.span,
+                )? {
+                    Ok(boole)
+                } else {
+                    Err(AnalysisError::TypeMismatch {
+                        got: left_type,
+                        at: left.span,
+                        expected: Expected::Abstract("simple-type or string-type"),
+                        reason: op.span,
+                    })
+                }
+            }
+            e::BinOp::LEq | e::BinOp::GEq => {
+                if self.infer_binop_cmp_common(
+                    left,
+                    right,
+                    &left_type_kind,
+                    &right_type_kind,
+                    op.span,
+                )? {
+                    Ok(boole)
+                } else if let Some(target) = self.infer_set_type_operands::<true>(
+                    left,
+                    right,
+                    &left_type_kind,
+                    &right_type_kind,
+                    op.span,
+                )? {
+                    Ok(target)
+                } else {
+                    Err(AnalysisError::TypeMismatch {
+                        got: left_type,
+                        at: left.span,
+                        expected: Expected::Abstract("simple-type, string-type or Set of T"),
+                        reason: op.span,
+                    })
+                }
+            }
+            e::BinOp::In => {
+                let left_type = self.context.to_ordinal(left_type, left.span, op.span)?;
+                if let TypeKind::Set { member_ty: elem, .. } = right_type_kind {
+                    if left_type == elem {
+                        Ok(boole)
+                    } else {
+                        Err(AnalysisError::TypeMismatch {
+                            got: right_type,
+                            at: right.span,
+                            expected: Expected::One(self.context.set_of_t),
+                            reason: op.span,
+                        })
+                    }
+                } else {
+                    Err(AnalysisError::MemberTypeMismatch {
+                        member_type: left_type,
+                        at: left.span,
+                        set_type: right_type,
+                    })
+                }
+            }
+        }
+    }
+
+    /// Infer/Check simple-type or string-type operands for comparison operations.
+    fn infer_binop_cmp_common(
+        &mut self,
+        left: Spanned<TypeId>,
+        right: Spanned<TypeId>,
+        left_type_kind: &TypeKind,
+        right_type_kind: &TypeKind,
+        op_span: Span,
+    ) -> AnalysisResult<bool> {
+        let reqd_simple = [
+            self.context.integer.into(),
+            self.context.real,
+            self.context.boolean.into(),
+            self.context.char.into(),
+        ];
+
+        if reqd_simple.contains(&left.node) {
+            if reqd_simple.contains(&right.node) {
+                match (left_type_kind, right_type_kind) {
+                    (TypeKind::Integer, TypeKind::Real) | (TypeKind::Real, TypeKind::Integer) => {
+                        Ok(true)
+                    }
+                    _ => {
+                        self.context.check_compat(left.node, right.node, op_span)?;
+                        Ok(true)
+                    }
+                }
+            } else {
+                Err(AnalysisError::TypeMismatch {
+                    got: right.node,
+                    at: right.span,
+                    expected: Expected::Abstract("compatible simple-type"),
+                    reason: op_span,
+                })
+            }
+        } else if let TypeKind::Subrange { .. }
+        | TypeKind::Enumerated { .. }
+        | TypeKind::Array { .. } = left_type_kind
+        {
+            self.context.check_compat(left.node, right.node, op_span)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn infer_binop_simple<const N: usize>(
+        &mut self,
+        types: &[TypeId; N],
+        left: Spanned<TypeId>,
+        right: Spanned<TypeId>,
+        result_type: TypeId,
+        op_span: Span,
+    ) -> AnalysisResult<TypeId> {
+        let expected =
+            if const { N == 1 } { Expected::One(types[0]) } else { Expected::Many(types.to_vec()) };
+
+        if types.contains(&left.node) {
+            if types.contains(&right.node) {
+                Ok(result_type)
+            } else {
+                Err(AnalysisError::TypeMismatch {
+                    got: right.node,
+                    at: right.span,
+                    expected,
+                    reason: op_span,
+                })
+            }
+        } else {
+            Err(AnalysisError::TypeMismatch {
+                got: left.node,
+                at: left.span,
+                expected,
+                reason: op_span,
+            })
+        }
+    }
+
+    /// # Constant Generics
+    ///
+    /// * `CMP` - Whether the surrounding binary operation is a comparison, so that an appropriate target type can be
+    ///   returned.
+    fn infer_set_type_operands<const CMP: bool>(
+        &mut self,
+        left: Spanned<TypeId>,
+        right: Spanned<TypeId>,
+        left_type_kind: &TypeKind,
+        right_type_kind: &TypeKind,
+        op_span: Span,
+    ) -> AnalysisResult<Option<TypeId>> {
+        if let &TypeKind::Set { .. } = left_type_kind {
+            let result = if const { CMP } { self.context.boolean.into() } else { left.node };
+            if let &TypeKind::Set { .. } = right_type_kind
+                && left.node == right.node
+            {
+                Ok(Some(result))
+            } else if right.node == self.context.set_of_t {
+                Ok(Some(result))
+            } else {
+                Err(AnalysisError::TypeMismatch {
+                    got: right.node,
+                    at: right.span,
+                    expected: Expected::One(left.node),
+                    reason: op_span,
+                })
+            }
+        } else if let (TypeKind::SetOfT, TypeKind::Set { .. }) = (left_type_kind, right_type_kind) {
+            Ok(Some(right.node))
+        } else {
+            Ok(None)
         }
     }
 
     fn infer_set(
         &mut self,
         elements: &[Spanned<e::SetMember>],
-        expected: Option<(TypeId, Span)>,
         expr_span: Span,
+        expected: Option<(TypeId, Span)>,
     ) -> AnalysisResult<TypeId> {
-        // Packedness is inferred from context, and if that information is not available it defaults to unpacked
-        let (packed, member_type) = if let Some((expected, origin)) = expected {
-            if let TypeKind::Set { packed, elem } = self.context.get_type(expected) {
-                (*packed, Some(elem))
-            } else {
-                return Err(AnalysisError::TypeMismatch {
-                    got: self.context.set_of_t,
-                    at: expr_span,
-                    expected,
-                    origin,
-                });
-            }
-        } else {
-            (false, None)
-        };
         if let Some((first, rest)) = elements.split_first() {
+            // Packedness is inferred from context, and if that information is not available it defaults to unpacked
+            let (packed, member_type) =
+                if let Some((TypeKind::Set { packed, member_ty: elem }, reason)) =
+                    expected.map(|(ty, reason)| (self.context.get_type(ty), reason))
+                {
+                    (*packed, Some((*elem, reason)))
+                } else {
+                    (false, None)
+                };
             let e::SetMember { start, end } = &first.node;
             let member_type = match member_type {
-                Some(r#type) => (*r#type).into(),
+                Some((member_type, reason)) => {
+                    let expected = member_type.into();
+                    let start_type = self.infer_expr(start.as_ref(), None)?;
+                    self.context.check_assign_compat(expected, start_type, start.span)?;
+                    start_type
+                }
                 None => self.infer_expr(start.as_ref(), None)?,
             };
             if let Some(end) = end.as_ref() {
@@ -656,23 +1027,25 @@ impl<'ast> Analyser {
             }
             let ty = TypeKind::Set {
                 packed,
-                elem: self.context.to_ordinal(member_type, first.span, expr_span)?,
+                member_ty: self.context.to_ordinal(member_type, first.span, expr_span)?,
             };
             Ok(self.context.fresh(ty))
-        } else {
-            if let Some((expected, origin)) = expected {
+        }
+        // Empty set literal
+        else {
+            if let Some((expected, reason)) = expected {
                 if let TypeKind::Set { .. } = self.context.get_type(expected) {
                     Ok(expected)
                 } else {
                     Err(AnalysisError::TypeMismatch {
                         got: self.context.set_of_t,
                         at: expr_span,
-                        expected,
-                        origin,
+                        expected: Expected::One(expected),
+                        reason,
                     })
                 }
             } else {
-                Err(AnalysisError::UnexpectedEmptySet(expr_span))
+                Ok(self.context.set_of_t)
             }
         }
     }
@@ -809,8 +1182,8 @@ impl<'ast> Analyser {
                                 return Err(AnalysisError::TypeMismatch {
                                     got: *actual_result,
                                     at: arg.span,
-                                    expected: formal_result,
-                                    origin: call_span,
+                                    expected: Expected::One(formal_result),
+                                    reason: call_span,
                                 });
                             }
                         }
@@ -928,8 +1301,8 @@ impl<'ast> Analyser {
                     Err(AnalysisError::TypeMismatch {
                         got: *r2,
                         at: *actual_span,
-                        expected: *r1,
-                        origin,
+                        expected: Expected::One(*r1),
+                        reason: origin,
                     })
                 }
             }
@@ -963,10 +1336,10 @@ impl<'ast> Analyser {
             e::Var::Ref(inner_var) => {
                 let inner_var_type = self.infer_var(inner_var.as_ref().as_ref())?;
                 let TypeKind::Pointer(r#type) = self.context.get_type(inner_var_type) else {
-                    return Err(AnalysisError::MismatchType {
+                    return Err(AnalysisError::TypeMismatch {
                         got: inner_var_type,
                         at: inner_var.span,
-                        expected: "pointer type",
+                        expected: Expected::Abstract("pointer type"),
                         reason: var.span,
                     });
                 };
@@ -978,10 +1351,10 @@ impl<'ast> Analyser {
                 let TypeKind::Array { indices, elem, .. } =
                     self.context.get_type(array_var_type).clone()
                 else {
-                    return Err(AnalysisError::MismatchType {
+                    return Err(AnalysisError::TypeMismatch {
                         got: array_var_type,
                         at: array_var.span,
-                        expected: "array type",
+                        expected: Expected::Abstract("array type"),
                         reason: subscripts.span,
                     });
                 };
@@ -1001,10 +1374,10 @@ impl<'ast> Analyser {
                 let record_type = self.infer_var(record.as_ref().as_ref())?;
                 let TypeKind::Record { fixed, variant, .. } = self.context.get_type(record_type)
                 else {
-                    return Err(AnalysisError::MismatchType {
+                    return Err(AnalysisError::TypeMismatch {
                         got: record_type,
                         at: record.span,
-                        expected: "record type",
+                        expected: Expected::Abstract("record type"),
                         reason: var.span,
                     });
                 };

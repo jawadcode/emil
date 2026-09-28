@@ -1,7 +1,7 @@
 use crate::{
     ast::expr::{Args, Expr, SetMember, SpanVar, UnaryOp, Var},
-    lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
-    utils::{trim_ends, Spanned},
+    lexer::{TokenKind, parse_unsigned_integer, parse_unsigned_real},
+    utils::{Spanned, trim_ends},
 };
 
 use super::{ParserState, SpanParseResult};
@@ -19,7 +19,7 @@ pub fn expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr>
         ],
         |parser, left| {
             let left = Box::new(left);
-            let op = parser.advance().node.into();
+            let op = parser.advance().map(Into::into);
             let right = simple_expr(parser).map(Box::new)?;
 
             Ok(Spanned { span: left.span + right.span, node: Expr::BinOp { op, left, right } })
@@ -29,8 +29,8 @@ pub fn expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr>
 }
 
 fn simple_expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
-    let sign: Option<UnaryOp> = match parser.peek() {
-        TokenKind::Plus | TokenKind::Minus => Some(parser.advance().node.into()),
+    let sign: Option<Spanned<UnaryOp>> = match parser.peek() {
+        TokenKind::Plus | TokenKind::Minus => Some(parser.advance().map(Into::into)),
         _ => None,
     };
     parser.repeat_fold(
@@ -39,7 +39,7 @@ fn simple_expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Ex
             let left = Box::new(left);
             let left_span = left.span;
 
-            let op = parser.advance().node.into();
+            let op = parser.advance().map(Into::into);
 
             let right = term(parser).map(Box::new)?;
             let right_span = right.span;
@@ -64,7 +64,7 @@ fn term<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
         &[TokenKind::Asterisk, TokenKind::Slash, TokenKind::Div, TokenKind::Mod, TokenKind::And],
         |parser, left| {
             let left = Box::new(left);
-            let op = parser.advance().node.into();
+            let op = parser.advance().map(Into::into);
             let right = factor(parser).map(Box::new)?;
 
             Ok(Spanned { span: left.span + right.span, node: Expr::BinOp { op, left, right } })
@@ -81,9 +81,9 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
         TokenKind::URealLit => {
             Ok(parser.advance_source().map(parse_unsigned_real).map(Expr::URealLit))
         }
-        TokenKind::StrLit => {
-            Ok(parser.advance_source().map(trim_ends).map(|s| Expr::StrLit(s.to_string())))
-        }
+        TokenKind::StrLit => Ok(parser.advance_source().map(trim_ends).map(|s| {
+            if s.len() == 1 { Expr::CharLit(s.as_bytes()[0]) } else { Expr::StrLit(s.to_string()) }
+        })),
         TokenKind::Nil => Ok(parser.advance_source().map(|_| Expr::Nil)),
         TokenKind::Ident => factor_ident(parser),
         TokenKind::LSquare => {
@@ -110,7 +110,10 @@ fn factor<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
 
             Ok(Spanned {
                 span: start_span + operand.span,
-                node: Expr::UnaryOp { op: UnaryOp::Not, operand },
+                node: Expr::UnaryOp {
+                    op: Spanned { span: start_span, node: UnaryOp::Not },
+                    operand,
+                },
             })
         }
         TokenKind::LParen => {

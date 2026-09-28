@@ -1,6 +1,6 @@
 use std::{env, fs, process};
 
-use parser::{program::program, ParserState};
+use parser::{ParserState, program::program};
 use sema::Analyser;
 
 mod ast;

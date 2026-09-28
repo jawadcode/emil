@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use crate::{
-    ast::{stmt::CompoundStmt, Ident, UnspanIdent},
+    ast::{Ident, UnspanIdent, stmt::CompoundStmt},
     utils::{Span, Spanned},
 };
 
@@ -30,12 +30,13 @@ pub struct ConstDef {
 
 #[derive(Debug, Clone)]
 pub enum ConstExpr {
-    NumLitOrIdent { is_pos: Option<bool>, lit: ConstExprLit },
+    NumLitOrIdent { is_pos: Option<bool>, lit: ConstExprNumLit },
+    CharLit(u8),
     StrLit(String),
 }
 
 #[derive(Debug, Clone)]
-pub enum ConstExprLit {
+pub enum ConstExprNumLit {
     UIntLit(u64),
     URealLit(f64),
     Ident(UnspanIdent),

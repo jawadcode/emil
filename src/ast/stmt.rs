@@ -1,7 +1,7 @@
 use crate::{
     ast::{
-        expr::{Args, SpanExpr, SpanVar},
         Ident,
+        expr::{Args, SpanExpr, SpanVar},
     },
     utils::{Span, Spanned},
 };

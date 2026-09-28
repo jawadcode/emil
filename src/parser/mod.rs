@@ -7,7 +7,7 @@ use lasso::Rodeo;
 
 use crate::{
     ast::{Ident, UnspanIdent},
-    lexer::{parse_unsigned_integer, Lexer, Token, TokenKind},
+    lexer::{Lexer, Token, TokenKind, parse_unsigned_integer},
     utils::{Span, Spanned},
 };
 
@@ -277,11 +277,7 @@ fn empty_list<T: Clone + std::fmt::Debug>() -> Spanned<Vec<T>> {
 }
 
 fn add_span_opt(lhs: Span, rhs: Option<Span>) -> Span {
-    if let Some(rhs) = rhs {
-        lhs + rhs
-    } else {
-        lhs
-    }
+    if let Some(rhs) = rhs { lhs + rhs } else { lhs }
 }
 
 fn parse_label(tok: &str) -> u16 {

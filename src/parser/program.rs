@@ -1,20 +1,20 @@
 use crate::{
     ast::{
+        Ident,
         expr::UnaryOp,
         program::{
-            ArraySchema, Block, ConstDef, ConstExpr, ConstExprLit, Directive, FieldList,
-            FixedFields, FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param, ParamType, PostSig,
-            ProcDecl, ProcSig, Program, RoutineDecl, SubrangeBound, SubrangeBoundLiteral, Type,
-            TypeDef, UnpackedStructuredType, VarDecl, Variant, VariantField,
+            ArraySchema, Block, ConstDef, ConstExpr, ConstExprNumLit, FieldList, FixedFields,
+            FuncDecl, FuncSig, IndexTypeSpec, OrdinalType, Param, ParamType, PostSig, ProcDecl,
+            ProcSig, Program, RoutineDecl, SubrangeBound, SubrangeBoundLiteral, Type, TypeDef,
+            UnpackedStructuredType, VarDecl, Variant, VariantField,
         },
-        Ident,
     },
-    lexer::{parse_unsigned_integer, parse_unsigned_real, TokenKind},
+    lexer::{TokenKind, parse_unsigned_integer, parse_unsigned_real},
     parser::{add_span_opt, empty_list},
-    utils::{trim_ends, Spanned},
+    utils::{Spanned, trim_ends},
 };
 
-use super::{parse_label, stmt::compound_stmt, ParserState, SpanParseResult};
+use super::{ParserState, SpanParseResult, parse_label, stmt::compound_stmt};
 
 pub fn program<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Program> {
     let start_span = parser.expect(TokenKind::Program)?.span;
@@ -468,7 +468,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
         parser
             .advance_source()
             .map(parse_unsigned_integer)
-            .map(|lit| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprLit::UIntLit(lit) })
+            .map(|lit| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprNumLit::UIntLit(lit) })
     }
 
     fn ureallit<'source>(
@@ -478,7 +478,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
         parser
             .advance_source()
             .map(parse_unsigned_real)
-            .map(|lit| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprLit::URealLit(lit) })
+            .map(|lit| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprNumLit::URealLit(lit) })
     }
 
     fn ident<'source>(
@@ -487,15 +487,19 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
     ) -> Spanned<ConstExpr> {
         parser
             .advance_ident()
-            .map(|ident| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprLit::Ident(ident) })
+            .map(|ident| ConstExpr::NumLitOrIdent { is_pos, lit: ConstExprNumLit::Ident(ident) })
     }
 
     Ok(match parser.peek() {
         TokenKind::UIntLit => uintlit(parser, None),
         TokenKind::URealLit => ureallit(parser, None),
-        TokenKind::StrLit => {
-            parser.advance_source().map(trim_ends).map(str::to_string).map(ConstExpr::StrLit)
-        }
+        TokenKind::StrLit => parser.advance_source().map(trim_ends).map(|s| {
+            if s.len() == 1 {
+                ConstExpr::CharLit(s.as_bytes()[0])
+            } else {
+                ConstExpr::StrLit(s.to_string())
+            }
+        }),
         TokenKind::Ident => ident(parser, None),
         op @ TokenKind::Plus | op @ TokenKind::Minus => {
             let start_span = parser.advance().span;
@@ -507,7 +511,7 @@ pub(super) fn constexpr<'source>(parser: &mut ParserState<'source>) -> SpanParse
                 TokenKind::Ident => ident(parser, Some(is_pos)),
                 _ => {
                     return parser
-                        .next_error("unsigned numeric literal, string literal or identifier")
+                        .next_error("unsigned numeric literal, string literal or identifier");
                 }
             }
             .map_span(|s| start_span + s)
