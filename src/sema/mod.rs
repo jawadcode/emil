@@ -1325,7 +1325,16 @@ impl<'ast> Analyser {
                         BuiltinVar::Input => Ok(self.context.text),
                         BuiltinVar::Output => Ok(self.context.text),
                     },
-                    DefPoint::UserDef { kind: DefKind::Var(var_type), .. } => Ok(*var_type),
+                    DefPoint::UserDef {
+                        kind:
+                            DefKind::Var(r#type)
+                            | DefKind::Const { r#type, .. }
+                            | DefKind::Param(
+                                ParamKind::Value(ParamType::TypeIdent(r#type))
+                                | ParamKind::Var(ParamType::TypeIdent(r#type)),
+                            ),
+                        ..
+                    } => Ok(*r#type),
                     _ => Err(AnalysisError::MismatchDef {
                         got: def,
                         expected: "variable",
