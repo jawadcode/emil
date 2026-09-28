@@ -4,7 +4,8 @@ A pascal compiler, named after the legend Niklaus Emil Wirth.
 
 # Plans/Ideas
 
-* [ ] Implement parser and semantic analysis based on the ISO 7185:1990 standard and Doug Cooper\'s 'Standard Pascal -- User Reference Manual'
+* [x] Implement parser and semantic analysis based on the ISO 7185:1990 standard and Doug Cooper\'s 'Standard Pascal -- User Reference Manual'
+* [ ] Implement Typed High-level IR - Lower a few constructs maybe, but mostly just to record type information
 * [ ] Use LLVM through inkwell for the backend, maybe consider Cranelift
 * [ ] Work on a backend written from scratch, with the help of Cooper & Torczon's 'Engineering a Compiler'
 * [ ] Focus on making compiler a "complying processor", enforcing the full range of errors correctly
