@@ -97,7 +97,10 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
 
 fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
     match parser.peek() {
-        TokenKind::Ident => Ok(parser.advance_ident().map(Type::Ident)),
+        TokenKind::Ident => type_ident_or_subrange_type(parser),
+        TokenKind::Plus | TokenKind::Minus | TokenKind::UIntLit | TokenKind::LParen => {
+            ordinal_type(parser).map(|ty| ty.map(Type::Ordinal))
+        }
         TokenKind::Packed => {
             let packed_span = parser.advance().span;
             unpacked_structured_type(parser).map(|ty| Spanned {
@@ -122,7 +125,7 @@ fn r#type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Type> {
 
 fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<OrdinalType> {
     match parser.peek() {
-        TokenKind::Ident => type_ident_or_subrange_type(parser),
+        TokenKind::Ident => ordinal_type_ident_or_subrange_type(parser),
         TokenKind::Plus | TokenKind::Minus | TokenKind::UIntLit => subrange_type(parser),
         TokenKind::LParen => {
             let start_span = parser.advance().span;
@@ -137,6 +140,18 @@ fn ordinal_type<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<O
 }
 
 fn type_ident_or_subrange_type<'source>(
+    parser: &mut ParserState<'source>,
+) -> SpanParseResult<Type> {
+    ordinal_type_ident_or_subrange_type(parser).map(|o_ty| {
+        o_ty.map(|o_ty| match o_ty {
+            OrdinalType::Subrange { .. } => Type::Ordinal(o_ty),
+            OrdinalType::Ident(name) => Type::Ident(name),
+            OrdinalType::Enumerated(_) => unreachable!(),
+        })
+    })
+}
+
+fn ordinal_type_ident_or_subrange_type<'source>(
     parser: &mut ParserState<'source>,
 ) -> SpanParseResult<OrdinalType> {
     let ident = parser.advance_ident();
