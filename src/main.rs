@@ -25,9 +25,10 @@ fn main() {
         Ok(program) => {
             println!("Parse Result:\n{:?}", program.clone());
             println!();
-            let result = Analyser::new(parser.yeehaw()).check_program(&program.node);
+            let mut analyser = Analyser::new(parser.yeehaw());
+            let result = analyser.check_program(&program.node);
             if let Err(err) = result {
-                eprintln!("Analyser failed with: {err:?}");
+                analyser.print_error(err, &source_path, &source_content);
             }
         }
         Err(err) => {

@@ -1,6 +1,7 @@
 #![allow(unused)]
 
 use std::{
+    cell::RefCell,
     error::Error,
     fmt::{self, Debug, Display, Write},
     ops::{Add, AddAssign, Deref, Index, Range},
@@ -14,6 +15,13 @@ pub fn trim_ends(s: &str) -> &str {
 pub struct Span {
     pub start: usize,
     pub end: usize,
+}
+
+impl Span {
+    /// For convenience, type annotations aren't always possible
+    pub fn to_range(self) -> Range<usize> {
+        self.into()
+    }
 }
 
 impl From<Range<usize>> for Span {
@@ -161,6 +169,11 @@ impl From<Span> for Range<usize> {
 }
 
 pub struct DisplaySlice<'a, T: Display>(&'a [T]);
+
+// pub struct DisplayItems<T: Display, I: Iterator<Item = T>> {
+//     iter: RefCell<I>,
+//     final_sep: &'static str,
+// }
 
 impl<T: Display> Display for DisplaySlice<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

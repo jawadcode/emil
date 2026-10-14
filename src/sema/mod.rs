@@ -10,14 +10,18 @@ use strum::IntoEnumIterator;
 
 mod builtins;
 mod context;
+mod errors;
 
 use crate::{
     ast::{
-        Ident, UnspanIdent, expr as e,
+        Ident, expr as e,
         program::{self as p},
         stmt as s,
     },
-    sema::context::{FieldId, OrdinalTypeId, ParamIter, ParamSection, TypeKind, VariantPart},
+    sema::{
+        context::{FieldId, ParamIter, ParamSection, TypeKind, VariantPart},
+        errors::{AnalysisError, Expected},
+    },
     utils::{Span, Spanned},
 };
 
@@ -30,126 +34,6 @@ pub struct Analyser {
     /// [`ParserState::yeehaw`]: ../../emil/parser/struct.ParserState.html "yeehaw"
     ///
     rodeo: Rodeo,
-}
-
-// TODO: Major major cleanup because wtf
-#[derive(Debug)]
-pub enum AnalysisError {
-    Unbound {
-        name: UnspanIdent,
-        at: Span,
-    },
-    // The only case of an invalid ordinal-type that the parser doesn't prevent
-    NotOrdinal {
-        name: UnspanIdent,
-        at: Span,
-    },
-    SubrangeBoundsTypeMismatch {
-        lower: TypeId,
-        upper: TypeId,
-    },
-    SubrangeBoundsBackwards {
-        span: Span,
-        start_ord: i64,
-        end_ord: i64,
-    },
-    SubrangeHostTypeMismatch {
-        t1: TypeId,
-        t2: TypeId,
-        // Recover `host_type`s from `TypeId`s
-        origin: Span,
-    },
-    SubrangeIntervalsMismatch {
-        t1: TypeId,
-        t2: TypeId,
-        // Recover `lower`s and `upper`s from `TypeId`s
-        origin: Span,
-    },
-    // These two are generated for built-in lang constructs which have specific sets of rules about accepted types
-    MismatchDef {
-        got: DefId,
-        // Recover location of def (where applicable) from `DefPoint` at `got`
-        expected: &'static str,
-        origin: Span,
-    },
-    // MismatchType {
-    //     got: TypeId,
-    //     at: Span,
-    //     expected: &'static str,
-    //     reason: Span,
-    // },
-    TypeMismatch {
-        got: TypeId,
-        at: Span,
-        expected: Expected,
-        reason: Span,
-    },
-    IncompatibleTypes {
-        got: TypeId,
-        expected: TypeId,
-        origin: Span,
-    },
-    AssignIncompatTypes {
-        got: TypeId,
-        expected: TypeId,
-        origin: Span,
-    },
-    DuplicateDecl {
-        name: UnspanIdent,
-        existing: DefId,
-        duplicate: Span,
-    },
-    MissingForwardDecl {
-        name: UnspanIdent,
-        at: Span,
-    },
-    UnknownDirective(Span),
-    MissingField {
-        record: TypeId,
-        name: UnspanIdent,
-        at: Span,
-    },
-    UnexpectedNil(Span),
-    UnexpectedEmptySet(Span),
-    ExpectedIdentifier {
-        kind: &'static str,
-        at: Span,
-    },
-    // `formal` and `actual` are included because it's hard to trace backwards from their parameters
-    Incongruous {
-        /// Guaranteed to be `ParamKind::Proc(_)`
-        formal: ParamId,
-        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_), .. }`
-        actual: DefId,
-        formal_param: ParamId,
-        actual_param: ParamId,
-        origin: Span,
-    },
-    MissingLabel {
-        label: u16,
-        at: Span,
-    },
-    UndeclaredLabel(Span),
-    RoutineParamsShapeMismatch {
-        formal: ParamId,
-        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_) | DefKind::Func(_), .. }`
-        actual: DefId,
-        origin: Span,
-    },
-    MemberTypeMismatch {
-        member_type: OrdinalTypeId,
-        at: Span,
-        /// Guaranteed to be `TypeKind::Set { .. }`
-        set_type: TypeId,
-    },
-}
-
-#[derive(Debug, Clone)]
-pub enum Expected {
-    One(TypeId),
-    // TODO: Use a `smallvec::SmallVec`
-    Many(Vec<TypeId>),
-    Abstract(&'static str),
 }
 
 pub type AnalysisResult<T> = Result<T, AnalysisError>;
@@ -1328,6 +1212,7 @@ impl<'ast> Analyser {
                     DefPoint::UserDef {
                         kind:
                             DefKind::Var(r#type)
+                            | DefKind::EnumMember { r#type, .. }
                             | DefKind::Const { r#type, .. }
                             | DefKind::Param(
                                 ParamKind::Value(ParamType::TypeIdent(r#type))

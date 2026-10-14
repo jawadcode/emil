@@ -189,7 +189,6 @@ pub enum DefKind {
     Const { r#type: TypeId, value: Constant },
     Type(TypeId),
     Var(TypeId),
-    Label(u16),
     Field { record: TypeId, r#type: TypeId },
     // ordinal would ideally be a u32/u64 but we want it to line up with the
     // type of subrange bounds which are i64
@@ -449,10 +448,12 @@ impl TypingContext {
         let (upper_type, upper_ord) = self.resolve_subrange_bound(upper, subr_span)?;
 
         if lower_ord > upper_ord {
-            Err(AnalysisError::SubrangeBoundsBackwards {
+            Err(AnalysisError::InvertedSubrangeBounds {
                 span: subr_span,
                 start_ord: lower_ord,
+                start_span: lower.span,
                 end_ord: upper_ord,
+                end_span: upper.span,
             })
         } else {
             // Due to the fact that Standard Pascal constant-definitions cannot have type annotations, it's not possible
@@ -843,6 +844,9 @@ impl TypingContext {
                     Ok(())
                 }
             }
+            // Pretty sure an equality check is sufficient, as an assignment-compatible `other` will always be ordinal
+            (TypeKind::Subrange { host_type, .. }, _) if TypeId::from(*host_type) == t2 => Ok(()),
+            (_, TypeKind::Subrange { host_type, .. }) if TypeId::from(*host_type) == t1 => Ok(()),
             (
                 TypeKind::Set { packed: p1, member_ty: elem1 },
                 TypeKind::Set { packed: p2, member_ty: elem2 },
@@ -935,7 +939,6 @@ impl TypingContext {
             | DefKind::Const { .. }
             | DefKind::Type(_)
             | DefKind::Var(_)
-            | DefKind::Label(_)
             | DefKind::Proc(_)
             | DefKind::Func(_) => DefId(self.create(name, kind, span)),
             _ => unreachable!(),
@@ -966,8 +969,8 @@ impl TypingContext {
         r#type: TypeId,
         ordinal: i64,
     ) -> EnumMemberId {
-        let id = self.insert_def(name, DefKind::EnumMember { r#type, ordinal }, span);
-        EnumMemberId(id.0)
+        let id = self.insert(name, DefKind::EnumMember { r#type, ordinal }, span);
+        EnumMemberId(id)
     }
 
     pub fn create_param(&mut self, name: UnspanIdent, span: Span, kind: ParamKind) -> ParamId {
@@ -997,6 +1000,12 @@ impl TypingContext {
     ) -> ConformArrayBoundId {
         let id = self.create(name, DefKind::ConformArrayBound(r#type), span);
         ConformArrayBoundId(id)
+    }
+
+    fn insert(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> usize {
+        let id = self.create(name, kind, span);
+        self.curr_scope_mut().idents.insert(name, DefId(id));
+        id
     }
 
     fn create(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> usize {
@@ -1127,6 +1136,11 @@ impl TypingContext {
     #[inline]
     fn get_or_intern_string(&mut self, s: &str) -> StringId {
         StringId(self.strings.get_or_intern(s))
+    }
+
+    #[inline]
+    pub fn get_string(&self, s: StringId) -> &str {
+        self.strings.resolve(&s.0)
     }
 
     pub fn dump(&self, rodeo: &Rodeo) {
