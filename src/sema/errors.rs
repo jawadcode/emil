@@ -158,13 +158,11 @@ impl Analyser {
                     )))
             }
             AnalysisError::SubrangeIntervalsMismatch { t1, t2, origin } => {
-                let TypeKind::Subrange { lower: l1, upper: u1, .. } =
-                    self.context.get_type(t1.into())
+                let TypeKind::Subrange { lower: l1, upper: u1, .. } = self.context.get_type(t1)
                 else {
                     unreachable!()
                 };
-                let TypeKind::Subrange { lower: l2, upper: u2, .. } =
-                    self.context.get_type(t2.into())
+                let TypeKind::Subrange { lower: l2, upper: u2, .. } = self.context.get_type(t2)
                 else {
                     unreachable!()
                 };
@@ -345,18 +343,20 @@ impl Analyser {
                 self.field_list_to_string(fixed, variant.as_ref(), buf);
                 buf.push_str(" end");
             }
-
             TypeKind::Set { packed, member_ty } => {
+                if *packed {
+                    buf.push_str("Packed ");
+                }
                 buf.push_str("Set of ");
                 self.type_to_string_inner((*member_ty).into(), buf);
             }
             TypeKind::File(r#type) => {
                 buf.push_str("File of ");
-                self.type_to_string_inner((*r#type).into(), buf);
+                self.type_to_string_inner(*r#type, buf);
             }
             TypeKind::Pointer(r#type) => {
                 buf.push_str("Pointer of ");
-                self.type_to_string_inner((*r#type).into(), buf);
+                self.type_to_string_inner(*r#type, buf);
             }
             TypeKind::PointerOfT => buf.push_str("Pointer of T"),
             TypeKind::SetOfT => buf.push_str("Set of T"),
