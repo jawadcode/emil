@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use ariadne::{Label, Report, ReportKind, Source};
 
 use crate::{
@@ -145,12 +143,18 @@ impl Analyser {
                         .with_message(format!("Has an ordinal value of {}", end_ord)),
                 ),
             AnalysisError::SubrangeHostTypeMismatch { t1, t2, origin } => {
+                let &TypeKind::Subrange { host_type: h1, .. } = self.context.get_type(t1) else {
+                    unreachable!()
+                };
+                let &TypeKind::Subrange { host_type: h2, .. } = self.context.get_type(t2) else {
+                    unreachable!()
+                };
                 Report::build(ReportKind::Error, (file_path, origin.to_range()))
                     .with_message("Subrange host types do not match")
                     .with_label(Label::new((file_path, origin.to_range())).with_message(format!(
                         "Got host type of {}, expected {}",
-                        self.type_to_string(t2),
-                        self.type_to_string(t1)
+                        self.type_to_string(h2.into()),
+                        self.type_to_string(h1.into())
                     )))
             }
             AnalysisError::SubrangeIntervalsMismatch { t1, t2, origin } => {
