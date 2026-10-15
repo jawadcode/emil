@@ -88,7 +88,7 @@ fn block<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Block> {
     let routine_decls = routine_decls(parser)?;
 
     let stmts = compound_stmt(parser)?;
-    let span = if label_decls.node.len() > 0 { label_decls.span + stmts.span } else { stmts.span };
+    let span = if label_decls.node.is_empty() { stmts.span } else { label_decls.span + stmts.span };
     Ok(Spanned {
         span,
         node: Block { label_decls, const_defs, type_defs, var_decls, routine_decls, stmts },
