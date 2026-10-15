@@ -1100,6 +1100,13 @@ impl TypingContext {
         }
     }
 
+    pub fn get_def_from_type(&self, r#type: TypeId) -> Option<&DefPoint> {
+        self.defs.iter().find(|def| match def {
+            DefPoint::UserDef { name, kind: DefKind::Type(ty), span } if *ty == r#type => true,
+            _ => false,
+        })
+    }
+
     /* Just too tempting to inline all of these 😭 */
 
     #[inline]

@@ -227,7 +227,27 @@ impl Analyser {
                     report
                 }
             }
-            AnalysisError::MissingField { record, name, at } => todo!(),
+            AnalysisError::MissingField { record, name, at } => {
+                let Some(&DefPoint::UserDef {
+                    name: record_type_name, span: record_type_span, ..
+                }) = self.context.get_def_from_type(record)
+                else {
+                    unreachable!()
+                };
+                Report::build(ReportKind::Error, (file_path, at.to_range()))
+                    .with_message(format!(
+                        "Field '{}' does not exist in record type '{}'",
+                        self.rodeo.resolve(&name),
+                        self.rodeo.resolve(&record_type_name)
+                    ))
+                    .with_label(
+                        Label::new((file_path, at.to_range())).with_message("Field does not exist"),
+                    )
+                    .with_label(
+                        Label::new((file_path, record_type_span.to_range()))
+                            .with_message("Record type defined here"),
+                    )
+            }
             AnalysisError::ExpectedIdentifier { kind, at } => todo!(),
             AnalysisError::Incongruous { formal, actual, formal_param, actual_param, origin } => {
                 todo!()
