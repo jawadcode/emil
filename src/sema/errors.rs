@@ -211,7 +211,22 @@ impl Analyser {
                         self.type_to_string(got)
                     )))
             }
-            AnalysisError::DuplicateDecl { name, existing, duplicate } => todo!(),
+            AnalysisError::DuplicateDecl { name, existing, duplicate } => {
+                let report = Report::build(ReportKind::Error, (file_path, duplicate.to_range()))
+                    .with_message(format!("Duplicate declaration {}", self.rodeo.resolve(&name)))
+                    .with_label(
+                        Label::new((file_path, duplicate.to_range()))
+                            .with_message("Duplicate here"),
+                    );
+                if let DefPoint::UserDef { kind, span, .. } = self.context.get_def(existing) {
+                    report.with_label(
+                        Label::new((file_path, span.to_range()))
+                            .with_message("Previous declaration here"),
+                    )
+                } else {
+                    report
+                }
+            }
             AnalysisError::MissingField { record, name, at } => todo!(),
             AnalysisError::ExpectedIdentifier { kind, at } => todo!(),
             AnalysisError::Incongruous { formal, actual, formal_param, actual_param, origin } => {

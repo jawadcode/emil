@@ -28,7 +28,7 @@ use crate::{
 pub struct Analyser {
     context: TypingContext,
     // TODO: Switch from using top-level `AnalysisResult<T>` to this
-    _errors: Vec<AnalysisError>,
+    errors: Vec<AnalysisError>,
     /// Must come from [`ParserState::yeehaw`]
     ///
     /// [`ParserState::yeehaw`]: ../../emil/parser/struct.ParserState.html "yeehaw"
@@ -52,13 +52,13 @@ impl<'ast> Analyser {
 
         let rodeo = rodeo.into_inner(); // RefCell goes poof
 
-        Self { context, _errors: Vec::new(), rodeo }
+        Self { context, errors: Vec::new(), rodeo }
     }
 
     pub fn check_program(&mut self, program: &'ast p::Program) -> AnalysisResult<()> {
         self.context.enter_scope(); // Program scope
         for param in &program.params.node {
-            self.context.insert_def(param.node, DefKind::ProgramParam, param.span);
+            self.context.insert_def(param.node, DefKind::ProgramParam, param.span)?;
         }
 
         self.check_block(&program.block.node, None)?;
@@ -91,21 +91,21 @@ impl<'ast> Analyser {
                 name.node,
                 DefKind::Const { r#type, value },
                 const_def.span,
-            );
+            )?;
             self.context.curr_scope_mut().insert(name.node, const_def);
         }
 
         for type_def in &type_defs.node {
             let p::TypeDef { name, def } = &type_def.node;
             let r#type = self.context.convert_type(def.as_ref())?;
-            self.context.insert_def(name.node, DefKind::Type(r#type), type_def.span);
+            self.context.insert_def(name.node, DefKind::Type(r#type), type_def.span)?;
         }
 
         for var_decl in &var_decls.node {
             let p::VarDecl { names, r#type } = &var_decl.node;
             let r#type = self.context.convert_type(r#type.as_ref())?;
             for name in &names.node {
-                self.context.insert_def(name.node, DefKind::Var(r#type), name.span);
+                self.context.insert_def(name.node, DefKind::Var(r#type), name.span)?;
             }
         }
 
@@ -149,7 +149,7 @@ impl<'ast> Analyser {
             _ => unimplemented!("Directives other than `forward` are currently unsupported"),
         };
         let proc = ProcSig { params, has_body };
-        self.context.insert_def(name.node, DefKind::Proc(proc), span);
+        self.context.insert_def(name.node, DefKind::Proc(proc), span)?;
 
         Ok(())
     }
@@ -216,7 +216,7 @@ impl<'ast> Analyser {
                     name.node,
                     DefKind::Func(FuncSig { params, result, has_body }),
                     span,
-                );
+                )?;
                 Ok(())
             }
         }
@@ -339,7 +339,7 @@ impl<'ast> Analyser {
                     control_var.node,
                     DefKind::Var(from_type),
                     control_var.span,
-                );
+                )?;
                 self.check_stmt(body.as_ref(), func)?;
                 self.context.exit_scope();
             }
@@ -365,7 +365,7 @@ impl<'ast> Analyser {
                         else {
                             unreachable!()
                         };
-                        self.context.insert_def(name, kind, span);
+                        self.context.insert_def(name, kind, span)?;
                     }
                 }
                 self.check_stmt(body.as_ref(), func)?;

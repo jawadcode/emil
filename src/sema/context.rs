@@ -420,7 +420,7 @@ impl TypingContext {
             .iter()
             .enumerate()
             .map(|(i, member)| self.insert_enum_member(member.node, member.span, enum_ty, i as i64))
-            .collect();
+            .collect::<AnalysisResult<Vec<_>>>()?;
         let ty = TypeKind::Enumerated { members };
 
         Ok(OrdinalTypeId(self.fresh(ty).0))
@@ -945,10 +945,16 @@ impl TypingContext {
         }
     }
 
-    pub fn insert_def(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> DefId {
+    pub fn insert_def(
+        &mut self,
+        name: UnspanIdent,
+        kind: DefKind,
+        span: Span,
+    ) -> AnalysisResult<DefId> {
+        self.check_dup(name, span)?;
         let def = self.create_def(name, kind, span);
         self.curr_scope_mut().insert(name, def);
-        def
+        Ok(def)
     }
 
     fn create_field(
@@ -968,9 +974,8 @@ impl TypingContext {
         span: Span,
         r#type: TypeId,
         ordinal: i64,
-    ) -> EnumMemberId {
-        let id = self.insert(name, DefKind::EnumMember { r#type, ordinal }, span);
-        EnumMemberId(id)
+    ) -> AnalysisResult<EnumMemberId> {
+        self.insert(name, DefKind::EnumMember { r#type, ordinal }, span).map(EnumMemberId)
     }
 
     pub fn create_param(&mut self, name: UnspanIdent, span: Span, kind: ParamKind) -> ParamId {
@@ -1002,10 +1007,21 @@ impl TypingContext {
         ConformArrayBoundId(id)
     }
 
-    fn insert(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> usize {
+    fn insert(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> AnalysisResult<usize> {
+        self.check_dup(name, span)?;
         let id = self.create(name, kind, span);
         self.curr_scope_mut().idents.insert(name, DefId(id));
-        id
+        Ok(id)
+    }
+
+    /// Checks whether a defining-point of the same name already exists in that scope.
+    fn check_dup(&self, name: UnspanIdent, span: Span) -> AnalysisResult<()> {
+        // Per 6.2.2.75, two defining-points in the same region/scope may not have the same name
+        if let Some(&def) = self.curr_scope().idents.get(&name) {
+            Err(AnalysisError::DuplicateDecl { name, existing: def, duplicate: span })
+        } else {
+            Ok(())
+        }
     }
 
     fn create(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> usize {
