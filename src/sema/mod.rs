@@ -739,18 +739,18 @@ impl<'ast> Analyser {
                     if left_type == elem {
                         Ok(boole)
                     } else {
-                        Err(AnalysisError::TypeMismatch {
-                            got: right_type,
-                            at: right.span,
-                            expected: Expected::One(self.context.set_of_t),
-                            reason: op.span,
+                        Err(AnalysisError::MemberTypeMismatch {
+                            member_type: left_type,
+                            at: left.span,
+                            set_type: right_type,
                         })
                     }
                 } else {
-                    Err(AnalysisError::MemberTypeMismatch {
-                        member_type: left_type,
-                        at: left.span,
-                        set_type: right_type,
+                    Err(AnalysisError::TypeMismatch {
+                        got: right_type.into(),
+                        at: right.span,
+                        expected: Expected::One(self.context.set_of_t),
+                        reason: op.span,
                     })
                 }
             }
@@ -942,7 +942,9 @@ impl<'ast> Analyser {
     ) -> AnalysisResult<TypeId> {
         let def = self.context.lookup(name.node, name.span)?;
         let DefPoint::UserDef {
-            kind: DefKind::Func(FuncSig { params, result, .. }),
+            kind:
+                DefKind::Func(FuncSig { params, result, .. })
+                | DefKind::Param(ParamKind::Func { params, result }),
             span: func_sig_span,
             ..
         } = self.context.get_def(def).clone()
