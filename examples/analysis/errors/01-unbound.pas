@@ -1,4 +1,4 @@
-program Test1(Output);
+program Test1;
 begin
   NonexistentVariable := 123;
 end.

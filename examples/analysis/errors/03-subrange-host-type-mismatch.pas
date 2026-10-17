@@ -1,4 +1,4 @@
-program Test3(Output);
+program Test3;
 type
   ExampleEnum1 = (One, Two, Three, Four);
   ExampleEnum2 = (A, B, C, D);

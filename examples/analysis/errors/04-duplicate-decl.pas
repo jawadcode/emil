@@ -1,4 +1,4 @@
-program Test4(output);
+program Test4;
 procedure ProcName(A: Integer);
 begin
 end;

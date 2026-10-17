@@ -1,4 +1,4 @@
-program Test2(Output);
+program Test2;
 type
   ExampleEnum = (One, Two, Three, Four);
   MalformedType = Four..One;
