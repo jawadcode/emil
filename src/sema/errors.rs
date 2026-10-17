@@ -1,4 +1,6 @@
-use ariadne::{Label, Report, ReportKind, Source};
+use std::ops::Range;
+
+use ariadne::{Config, IndexType, Label, LabelAttach, Report, ReportKind, Source};
 
 use crate::{
     ast::UnspanIdent,
@@ -6,7 +8,7 @@ use crate::{
         Analyser,
         context::{
             Constant, DefId, DefKind, DefPoint, EnumMemberId, FieldId, OrdinalTypeId, ParamId,
-            TypeId, TypeKind, Variant, VariantPart,
+            ParamKind, ParamType, TypeId, TypeKind, Variant, VariantPart,
         },
     },
     utils::Span,
@@ -77,9 +79,9 @@ pub enum AnalysisError {
     },
     // `formal` and `actual` are included because it's hard to trace backwards from their parameters
     Incongruous {
-        /// Guaranteed to be `ParamKind::Proc(_)`
+        /// Guaranteed to be `ParamKind::Proc(_) | ParamKind::Func(_)`
         formal: ParamId,
-        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_), .. }`
+        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_) | DefKind::Func(_), .. }`
         actual: DefId,
         formal_param: ParamId,
         actual_param: ParamId,
@@ -248,17 +250,124 @@ impl Analyser {
                             .with_message("Record type defined here"),
                     )
             }
-            AnalysisError::ExpectedIdentifier { kind, at } => todo!(),
-            AnalysisError::Incongruous { formal, actual, formal_param, actual_param, origin } => {
-                todo!()
+            AnalysisError::ExpectedIdentifier { kind, at } => {
+                Report::build(ReportKind::Error, (file_path, at.to_range()))
+                    .with_message(format!("Expected {kind}-identifier"))
+                    .with_label(
+                        Label::new((file_path, at.to_range()))
+                            .with_message(format!("Not a {kind}-identifier")),
+                    )
             }
-            AnalysisError::MissingLabel { label, at } => todo!(),
-            AnalysisError::RoutineParamsShapeMismatch { formal, actual, origin } => todo!(),
-            AnalysisError::MemberTypeMismatch { member_type, at, set_type } => todo!(),
+            AnalysisError::Incongruous { formal, actual, formal_param, actual_param, origin } => {
+                let (formal_name, formal_kind, _formal_span) = self.get_param(formal);
+                let (actual_kind, actual_name, _actual_span) = self.get_user_def(actual);
+                let (_formal_param_name, formal_param, formal_param_span) =
+                    self.get_param(formal_param);
+                let (_actual_param_name, actual_param, actual_param_span) =
+                    self.get_param(actual_param);
+                Report::build(ReportKind::Error, (file_path, origin.to_range()))
+                    .with_message(
+                        "Routine parameter and argument's parameter lists are incongruous",
+                    )
+                    // .with_label(Label::new((file_path, formal_span)).with_message(format!(
+                    //     "Within formal {formal} '{}'",
+                    //     self.rodeo.resolve(&formal_name)
+                    // )))
+                    .with_label(Label::new((file_path, formal_param_span)).with_message(format!(
+                        "{formal_kind} '{formal_name}' expects {formal_param}",
+                    )))
+                    // .with_label(
+                    //     Label::new((file_path, actual_span.to_range()))
+                    //         .with_message(format!("Within {}", self.rodeo.resolve(actual_name))),
+                    // )
+                    .with_label(Label::new((file_path, actual_param_span)).with_message(format!(
+                        "in {actual_kind} '{actual_name}', got {actual_param}"
+                    )))
+                    .with_label(Label::new((file_path, origin.to_range())).with_message(format!(
+                        "{actual_kind} {actual_name} is passed as {formal_kind} '{formal_name}'",
+                    )))
+            }
+            AnalysisError::MissingLabel { label, at } => {
+                Report::build(ReportKind::Error, (file_path, at.to_range()))
+                    .with_message(format!("Label not declared"))
+                    .with_label(
+                        Label::new((file_path, at.to_range()))
+                            .with_message(format!("label {label} does not exist.")),
+                    )
+            }
+            // TODO: Actually dig into the parameter lists and find the discrepancy
+            AnalysisError::RoutineParamsShapeMismatch { formal, actual, origin } => {
+                let (formal_name, formal, formal_span) = self.get_param(formal);
+                let (actual_kind, actual_name, actual_span) = self.get_user_def(actual);
+                Report::build(ReportKind::Error, (file_path, origin.to_range()))
+                    .with_message(
+                        "Routine parameter and argument's parameter list shapes don't match",
+                    )
+                    .with_label(
+                        Label::new((file_path, formal_span))
+                            .with_message(format!("{formal} {formal_name}")),
+                    )
+                    .with_label(
+                        Label::new((file_path, actual_span))
+                            .with_message(format!("{actual_kind} {actual_name}")),
+                    )
+                    .with_label(Label::new((file_path, origin.to_range())).with_message(format!(
+                        "{actual_kind} {actual_name} is passed as {formal} '{formal_name}'"
+                    )))
+            }
+            AnalysisError::MemberTypeMismatch { member_type, at, set_type } => {
+                let member_type = self.type_to_string(member_type.into());
+                let set_type = self.type_to_string(set_type);
+                Report::build(ReportKind::Error, (file_path, at.to_range()))
+                    .with_message("Set type and member type mismatch")
+                    .with_label(
+                        Label::new((file_path, at.to_range()))
+                            .with_message(format!("{member_type} cannot be member of {set_type}")),
+                    )
+            }
         }
+        .with_config(
+            Config::new()
+                // .with_compact(true)
+                .with_index_type(IndexType::Byte)
+                .with_label_attach(LabelAttach::Start),
+        )
         .finish()
-        .print((file_path, Source::from(file_content)))
+        .eprint((file_path, Source::from(file_content)))
         .unwrap()
+    }
+
+    fn get_param(&self, param: ParamId) -> (&str, String, Range<usize>) {
+        let DefPoint::UserDef { name, kind: DefKind::Param(param), span } =
+            self.context.get_def(param.into())
+        else {
+            unreachable!()
+        };
+        let param_info = match param {
+            ParamKind::Value(r#type) => {
+                format!("value-parameter of type {}", self.param_type_to_string(r#type))
+            }
+            ParamKind::Var(r#type) => {
+                format!("variable-parameter of type {}", self.param_type_to_string(r#type))
+            }
+            ParamKind::Proc(_) => "procedural-parameter".to_string(),
+            ParamKind::Func { .. } => "functional-parameter".to_string(),
+        };
+        (self.rodeo.resolve(name), param_info, (*span).into())
+    }
+
+    fn get_user_def(&self, def: DefId) -> (&'static str, &str, Range<usize>) {
+        let &DefPoint::UserDef { name, span, .. } = self.context.get_def(def) else {
+            unreachable!()
+        };
+        (self.def_to_string(def), self.rodeo.resolve(&name), span.into())
+    }
+
+    fn param_type_to_string(&self, r#type: &ParamType) -> String {
+        match r#type {
+            &ParamType::TypeIdent(r#type) => self.type_to_string(r#type),
+            ParamType::ArraySchema(_) => unimplemented!(),
+        }
     }
 
     fn expected_to_string(&self, expected: Expected) -> String {
