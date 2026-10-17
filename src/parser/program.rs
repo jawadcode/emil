@@ -379,7 +379,7 @@ fn func_decl<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Func
 
 fn params<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Vec<Spanned<Param>>> {
     let start_span = parser.advance().span;
-    let params = parser.repeat_sep(TokenKind::Comma, param)?;
+    let params = parser.repeat_sep(TokenKind::Semicolon, param)?;
     let end_span = parser.expect(TokenKind::RParen)?.span;
 
     Ok(Spanned { span: start_span + end_span, node: params })
