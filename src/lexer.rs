@@ -1,9 +1,6 @@
-use std::{
-    fmt::{self, Display, Write},
-    num::NonZero,
-};
+use std::fmt::{self, Display, Write};
 
-use lexical_core::{NumberFormatBuilder, ParseFloatOptions, parse_with_options};
+use lexical_core::{NumberFormatBuilder, ParseFloatOptions};
 use logos::{Lexer as LogosLexer, Logos, Skip, SpannedIter};
 
 use crate::utils::Spanned;
@@ -113,8 +110,8 @@ pub enum TokenKind {
     // #[token("false", ignore(case))] False,
     #[regex(r"([A-Za-z][A-Za-z0-9]*)")]             Ident,
     #[regex(r"[0-9]+")]                             UIntLit,
-    #[regex(r"(\+|-)?[0-9]+(e|E)(\+|-)[0-9]+")]
-    #[regex(r"[0-9]+\.[0-9]+((e|E)(\+|-)[0-9]+)?")] URealLit,
+    #[regex(r"[0-9]+(e|E)(\+|-)?[0-9]+")]
+    #[regex(r"[0-9]+\.[0-9]+((e|E)(\+|-)?[0-9]+)?")] URealLit,
     #[regex(r"'([^']|'')+'")]                       StrLit,
 
     #[regex(r"\{|\(\*", comment_lexer)]
@@ -132,18 +129,18 @@ pub fn parse_unsigned_integer(tok: &str) -> u64 {
     parse_uint(&mut tok.bytes())
 }
 
-const REAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
-    .digit_separator(NonZero::new(b'.'))
-    .required_integer_digits(true)
-    .required_fraction_digits(true)
-    .required_mantissa_digits(true)
-    .required_mantissa_sign(true)
-    .build_strict();
+// const UREAL_LITERAL_FORMAT: u128 = NumberFormatBuilder::new()
+//     .digit_separator(NonZero::new(b'.'))
+//     .required_integer_digits(true)
+//     .required_fraction_digits(false)
+//     .required_mantissa_digits(true)
+//     .required_mantissa_sign(false)
+//     .build_strict();
 
-// TODO: Panics with missing sign on `0.0`
 pub fn parse_unsigned_real(tok: &str) -> f64 {
-    parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
-        .unwrap()
+    lexical_core::parse(tok.as_bytes()).unwrap()
+    // parse_with_options::<f64, REAL_LITERAL_FORMAT>(tok.as_bytes(), &ParseFloatOptions::new())
+    //     .unwrap()
 }
 
 fn comment_lexer(lex: &mut LogosLexer<'_, TokenKind>) -> Skip {
