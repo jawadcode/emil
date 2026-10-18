@@ -8,9 +8,11 @@ use lasso::Rodeo;
 use crate::{
     ast::{Ident, UnspanIdent},
     lexer::{Lexer, Token, TokenKind, parse_unsigned_integer},
+    parser::errors::{ParseResult, SpanParseResult, SyntaxError},
     utils::{Span, Spanned},
 };
 
+pub mod errors;
 pub mod expr;
 pub mod program;
 pub mod stmt;
@@ -21,15 +23,8 @@ pub struct ParserState<'source> {
     lexer: Peekable<Lexer<'source>>,
 }
 
-pub struct SyntaxError {
-    pub expected: String,
-    pub got: Token,
-}
-
-pub type SpanParseResult<T> = Result<Spanned<T>, SyntaxError>;
-
-pub type ParseResult<T> = Result<T, SyntaxError>;
-
+/// Generalises non-consuming parser predicates, [`Self::apply`] takes `&mut ParserState` only due to
+/// [`ParserState::peek`], `apply` should never actually consume any tokens.
 trait TokenPred: Clone {
     fn apply(self, parser: &mut ParserState) -> bool;
 }

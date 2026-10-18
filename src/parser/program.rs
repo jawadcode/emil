@@ -14,7 +14,7 @@ use crate::{
     utils::{Spanned, trim_ends},
 };
 
-use super::{ParserState, SpanParseResult, parse_label, stmt::compound_stmt};
+use super::{ParserState, errors::SpanParseResult, parse_label, stmt::compound_stmt};
 
 pub fn program<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Program> {
     let start_span = parser.expect(TokenKind::Program)?.span;

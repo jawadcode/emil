@@ -4,7 +4,7 @@ use crate::{
     utils::{Spanned, trim_ends},
 };
 
-use super::{ParserState, SpanParseResult};
+use super::{ParserState, errors::SpanParseResult};
 
 pub fn expr<'source>(parser: &mut ParserState<'source>) -> SpanParseResult<Expr> {
     parser.repeat_fold(

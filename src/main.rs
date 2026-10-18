@@ -30,10 +30,11 @@ fn main() {
             println!();
             if let Err(err) = result {
                 analyser.print_error(err, &source_path, &source_content);
+                process::exit(1)
             }
         }
         Err(err) => {
-            eprintln!("{err}");
+            parser.print_error(err, &source_path);
             process::exit(1)
         }
     }

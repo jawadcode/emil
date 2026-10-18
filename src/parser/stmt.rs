@@ -11,7 +11,8 @@ use crate::{
 };
 
 use super::{
-    ParserState, SpanParseResult,
+    ParserState,
+    errors::SpanParseResult,
     expr::{args, expr, var, var_ext},
     parse_label,
     program::constexpr,
