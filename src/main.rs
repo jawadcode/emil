@@ -27,6 +27,7 @@ fn main() {
             println!();
             let mut analyser = Analyser::new(parser.yeehaw());
             let result = analyser.check_program(&program.node);
+            println!();
             if let Err(err) = result {
                 analyser.print_error(err, &source_path, &source_content);
             }
