@@ -274,14 +274,14 @@ impl Analyser {
                     //     self.rodeo.resolve(&formal_name)
                     // )))
                     .with_label(Label::new((file_path, formal_param_span)).with_message(format!(
-                        "{formal_kind} '{formal_name}' expects {formal_param}",
+                        "{formal_kind} '{formal_name}' expects a {formal_param}",
                     )))
                     // .with_label(
                     //     Label::new((file_path, actual_span.to_range()))
                     //         .with_message(format!("Within {}", self.rodeo.resolve(actual_name))),
                     // )
                     .with_label(Label::new((file_path, actual_param_span)).with_message(format!(
-                        "in {actual_kind} '{actual_name}', got {actual_param}"
+                        "in {actual_kind} '{actual_name}', got a {actual_param}"
                     )))
                     .with_label(Label::new((file_path, origin.to_range())).with_message(format!(
                         "{actual_kind} {actual_name} is passed as {formal_kind} '{formal_name}'",
