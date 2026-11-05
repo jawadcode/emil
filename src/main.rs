@@ -28,9 +28,9 @@ fn main() {
             println!();
             let mut analyser = Analyser::new(parser.yeehaw());
             let result = analyser.check_program(&program.node);
-            println!();
+            println!("\nElaborating...");
             match result {
-                Ok(program) => println!("{:?}", program),
+                Ok(program) => println!("Typed AST:\n{:?}", program),
                 Err(err) => {
                     analyser.print_error(err, &source_path, &source_content);
                     process::exit(1)

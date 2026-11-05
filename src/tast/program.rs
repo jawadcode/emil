@@ -1,6 +1,6 @@
 use crate::{
     ast::UnspanIdent,
-    sema::context::{ConstDefId, Constant, DefId, ParamId, ProgramParamId, TypeId},
+    sema::context::{ConstDefId, Constant, DefId, FuncId, ParamId, ProcId, ProgramParamId, TypeId},
     tast::stmt::MaybeLabelledStmt,
 };
 
@@ -42,12 +42,23 @@ pub struct VarDecl {
     pub r#type: TypeId,
 }
 
+/* Since this is a fairly unambitious  */
+
 #[derive(Debug, Clone)]
 pub enum RoutineDecl {
+    /// A forwarded procedure declaration
     ProcFwd(ProcSig),
-    Proc { sig: ProcSig, body: Block },
+    /// Corresponding implementation for a forwarded procedure declaration
+    ProcImpl { name: UnspanIdent, def: ProcId, body: Block },
+    /// A standalone procedure declaration
+    WholeProc { sig: ProcSig, body: Block },
+
+    /// A forwarded function declaration
     FuncFwd(FuncSig),
-    Func { sig: FuncSig, body: Block },
+    /// Corresponding implementation for a forwarded function declaration
+    FuncImpl { name: UnspanIdent, def: FuncId, body: Block },
+    /// A standalone function declaration
+    WholeFunc { sig: FuncSig, body: Block },
 }
 
 // Decided to flatten parameter sections
@@ -55,14 +66,14 @@ pub enum RoutineDecl {
 #[derive(Debug, Clone)]
 pub struct ProcSig {
     pub name: UnspanIdent,
-    pub def: DefId,
+    pub def: ProcId,
     pub params: Vec<ParamId>,
 }
 
 #[derive(Debug, Clone)]
 pub struct FuncSig {
     pub name: UnspanIdent,
-    pub def: DefId,
+    pub def: FuncId,
     pub params: Vec<ParamId>,
     pub result: TypeId,
 }

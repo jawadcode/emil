@@ -22,11 +22,7 @@ use crate::{
     tast::{
         Typed,
         expr::{Arg, BinOp, Expr, Place, SetMember, TypedExpr, UnaryOp},
-        program::{
-            Block, ConstDef, FuncSig, ProcSig, Program,
-            RoutineDecl::{self, FuncFwd},
-            TypeDef, VarDecl,
-        },
+        program::{Block, ConstDef, FuncSig, ProcSig, Program, RoutineDecl, TypeDef, VarDecl},
         stmt::{Case, MaybeLabelledStmt, Stmt},
     },
     utils::{Span, Spanned},
@@ -167,55 +163,104 @@ impl<'ast> Analyser {
         let p::ProcDecl { sig, post } = proc_decl;
         let p::ProcSig { name, params } = &sig.node;
 
-        println!("\nProcedure: {:?}", name.map(|n| self.rodeo.resolve(&n)));
-        let has_body = match post.node {
-            p::PostSig::Block(_) => true,
-            p::PostSig::Directive(p::Directive::Forward) => false,
-            _ => unimplemented!(),
-        };
-        let def = self.context.insert_def(
-            name.node,
-            DefKind::Proc(ctx::ProcSig { params: Vec::new(), has_body }),
-            span,
-        )?;
-
-        let params = self.convert_params(params, def)?;
-
-        // Need to update the def for recursive calls to work
-        self.context.update_def(def, |def| match def {
-            // Could've done `std::mem::swap` but then we'd have to grab and clone `params`
-            DefPoint::UserDef {
-                kind: DefKind::Proc(ctx::ProcSig { params: placeholder, .. }),
-                ..
-            } => placeholder.extend_from_slice(&params),
-            _ => unreachable!(),
-        });
-
-        let body = match &post.node {
+        match &post.node {
             p::PostSig::Block(block) => {
-                self.context.enter_scope();
-                self.load_params(&params);
-                let block = self.check_block(block, None)?;
-                self.context.exit_scope();
-                Some(block)
+                // Also functions as a duplicate check
+                let def = self.context.lookup(name.node, name.span)?;
+                // If there are zero params && the name is already in scope, then this is the "implementation"
+                // for a forward-declaration.
+                if params.is_empty()
+                    && let DefPoint::UserDef {
+                        kind: DefKind::Proc(ctx::ProcSig { params, has_body }),
+                        ..
+                    } = self.context.get_def(def)
+                {
+                    let params: Vec<ParamId> = ParamIter::from(params).collect();
+                    // Duplicate definition
+                    if *has_body {
+                        Err(AnalysisError::DuplicateDecl {
+                            name: name.node,
+                            existing: def,
+                            duplicate: span,
+                        })
+                    }
+                    // Implementation for forwarded procedure
+                    else {
+                        self.context.enter_scope();
+                        self.load_params(&params);
+                        let block = self.check_block(&block, None)?;
+                        self.context.exit_scope();
+                        Ok(RoutineDecl::ProcImpl {
+                            name: name.node,
+                            def: self.context.as_proc(def),
+                            body: block,
+                        })
+                    }
+                }
+                // Normal standalone procedure, need to create entry and update with parameters
+                else {
+                    let def = self.context.insert_def(
+                        name.node,
+                        DefKind::Proc(ctx::ProcSig { params: Vec::new(), has_body: true }),
+                        span,
+                    )?;
+                    let params = self.convert_params(params, def)?;
+                    self.context.update_def(def, |def| match def {
+                        DefPoint::UserDef {
+                            kind: DefKind::Proc(ctx::ProcSig { params: placeholder, .. }),
+                            ..
+                        } => placeholder.extend_from_slice(&params),
+                        _ => unreachable!(),
+                    });
+                    let params: Vec<ParamId> = ParamIter::from(&params).collect();
+                    let body = self.check_routine_body(&params, &block, None)?;
+                    Ok(RoutineDecl::WholeProc {
+                        sig: ProcSig { name: name.node, def: self.context.as_proc(def), params },
+                        body,
+                    })
+                }
             }
-            p::PostSig::Directive(p::Directive::Forward) => None,
-            _ => unimplemented!(),
-        };
-        let params = ParamIter::from(&params).collect::<Vec<_>>();
-        let sig = ProcSig { name: name.node, params, def };
+            p::PostSig::Directive(p::Directive::Forward) => {
+                let def = self.context.insert_def(
+                    name.node,
+                    DefKind::Proc(ctx::ProcSig { params: Vec::new(), has_body: false }),
+                    span,
+                )?;
+                let params = self.convert_params(params, def)?;
+                self.context.update_def(def, |def| match def {
+                    DefPoint::UserDef {
+                        kind: DefKind::Proc(ctx::ProcSig { params: placeholder, .. }),
+                        ..
+                    } => placeholder.extend_from_slice(&params),
+                    _ => unreachable!(),
+                });
+                let params: Vec<ParamId> = ParamIter::from(&params).collect();
+                Ok(RoutineDecl::ProcFwd(ProcSig {
+                    name: name.node,
+                    def: self.context.as_proc(def),
+                    params,
+                }))
+            }
+            _ => unreachable!(),
+        }
+    }
 
-        Ok(match body {
-            Some(body) => RoutineDecl::Proc { sig, body },
-            None => RoutineDecl::ProcFwd(sig),
-        })
+    fn check_routine_body(
+        &mut self,
+        params: &[ParamId],
+        block: &p::Block,
+        func: Option<(Ident, TypeId)>,
+    ) -> AnalysisResult<Block> {
+        self.context.enter_scope();
+        self.load_params(params);
+        let block = self.check_block(block, func);
+        self.context.exit_scope();
+        block
     }
 
     fn check_func(&mut self, func_decl: &p::FuncDecl, span: Span) -> AnalysisResult<RoutineDecl> {
         match func_decl {
             p::FuncDecl::Ident(name, block) => {
-                println!("\nFunction: {:?}", name.map(|n| self.rodeo.resolve(&n)));
-
                 let def = self.context.lookup(name.node, name.span)?;
                 let DefPoint::UserDef { kind: DefKind::Func(sig), .. } =
                     self.context.get_def(def).clone()
@@ -234,42 +279,50 @@ impl<'ast> Analyser {
                         duplicate: span,
                     });
                 } else {
-                    let DefPoint::UserDef { kind: DefKind::Func(sig), .. } =
-                        self.context.get_def_mut(def)
-                    else {
-                        unreachable!()
-                    };
-                    sig.has_body = true;
+                    self.context.update_def(def, |def| match def {
+                        DefPoint::UserDef { kind: DefKind::Func(sig), .. } => sig.has_body = true,
+                        _ => unreachable!(),
+                    });
                 }
 
-                self.context.enter_scope(); // Function scope
+                let params: Vec<ParamId> = sig.params_iter().collect();
+                let body =
+                    self.check_routine_body(&params, &block.node, Some((*name, sig.result)))?;
 
-                self.load_params(&sig.params);
-
-                self.check_block(&block.node, Some((*name, sig.result)))?;
-                self.context.exit_scope(); // Function scope
-
-                Ok(FuncFwd(FuncSig {
-                    name: name.node,
-                    def,
-                    params: sig.params_iter().collect::<Vec<_>>(),
-                    result: sig.result,
-                }))
+                Ok(RoutineDecl::FuncImpl { name: name.node, def: self.context.as_func(def), body })
             }
-            p::FuncDecl::Heading(sig, post_sig) => {
-                println!("\nFunction: {:?}", sig.node.name.map(|n| self.rodeo.resolve(&n)));
-
-                let p::FuncSig { name, params, result } = &sig.node;
-
-                let has_body = match post_sig.node {
-                    p::PostSig::Block(_) => true,
-                    p::PostSig::Directive(p::Directive::Forward) => false,
-                    _ => unimplemented!(),
-                };
+            p::FuncDecl::Heading(
+                Spanned { node: p::FuncSig { name, params, result }, span: sig_span },
+                Spanned { node: p::PostSig::Directive(p::Directive::Forward), .. },
+            ) => {
                 let result = self.context.lookup_type(result.node, result.span)?;
                 let def = self.context.insert_def(
                     name.node,
-                    DefKind::Func(ctx::FuncSig { params: Vec::new(), result, has_body }),
+                    DefKind::Func(ctx::FuncSig { params: Vec::new(), result, has_body: false }),
+                    *sig_span,
+                )?;
+                let params = self.convert_params(&params.node, def)?;
+                self.context.update_def(def, |def| match def {
+                    DefPoint::UserDef {
+                        kind: DefKind::Func(ctx::FuncSig { params: placeholder, .. }),
+                        ..
+                    } => placeholder.extend_from_slice(&params),
+                    _ => unreachable!(),
+                });
+                let params: Vec<ParamId> = ParamIter::from(&params).collect();
+                Ok(RoutineDecl::FuncFwd(FuncSig {
+                    name: name.node,
+                    def: self.context.as_func(def),
+                    params,
+                    result,
+                }))
+            }
+            p::FuncDecl::Heading(sig, Spanned { node: p::PostSig::Block(block), .. }) => {
+                let p::FuncSig { name, params, result } = &sig.node;
+                let result = self.context.lookup_type(result.node, result.span)?;
+                let def = self.context.insert_def(
+                    name.node,
+                    DefKind::Func(ctx::FuncSig { params: Vec::new(), result, has_body: true }),
                     span,
                 )?;
 
@@ -282,29 +335,15 @@ impl<'ast> Analyser {
                     _ => unreachable!(),
                 });
 
-                let body = match &post_sig.node {
-                    p::PostSig::Block(block) => {
-                        self.context.enter_scope();
-                        self.load_params(&params);
-                        let body = self.check_block(block, Some((*name, result)))?;
-                        self.context.exit_scope();
-                        Some(body)
-                    }
-                    p::PostSig::Directive(p::Directive::Forward) => None,
-                    _ => unimplemented!(),
-                };
+                let params: Vec<ParamId> = ParamIter::from(&params).collect();
+                let body = self.check_routine_body(&params, block, Some((*name, result)))?;
 
-                let sig = FuncSig {
-                    name: name.node,
-                    def,
-                    params: ParamIter::from(&params).collect::<Vec<_>>(),
-                    result,
-                };
-                Ok(match body {
-                    Some(body) => RoutineDecl::Func { sig, body },
-                    None => RoutineDecl::FuncFwd(sig),
-                })
+                let sig =
+                    FuncSig { name: name.node, def: self.context.as_func(def), params, result };
+                Ok(RoutineDecl::WholeFunc { sig, body })
             }
+            // Extern and other directives
+            _ => unimplemented!(),
         }
     }
 
@@ -536,13 +575,13 @@ impl<'ast> Analyser {
             });
         };
 
-        self.check_args(&params, args, span)?;
+        let args = self.check_args(&params, args, span)?;
 
-        todo!()
+        Ok(Stmt::ProcCall { name, def: self.context.as_proc(def), args })
     }
 
-    fn load_params(&mut self, params: &[ParamSection]) {
-        for param in ParamIter::from(params) {
+    fn load_params(&mut self, params: &[ParamId]) {
+        for &param in params {
             let param_def = param.into();
             let param_name = self.context.get_def_name(param_def);
             self.context.curr_scope_mut().insert(param_name, param_def);
@@ -1630,9 +1669,9 @@ impl<'ast> Analyser {
                             node: Place::VarParam { name, param: self.context.as_param(def) },
                             r#type,
                         }),
-                        _ => todo!("throw error about definition being un-assignable"),
+                        d => todo!("throw error about definition being un-assignable {:?}", d),
                     },
-                    _ => todo!("throw error about definition being un-assignable"),
+                    d => todo!("throw error about definition being un-assignable {:?}", d),
                 }
             }
             e::Var::Ref(inner_var) => todo!(),
