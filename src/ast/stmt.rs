@@ -83,7 +83,7 @@ pub struct WriteParamSpecs {
         Option<(/* colon_span */ Span, /* fractional digits specifier */ SpanExpr)>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum ForDirection {
     To,
     DownTo,

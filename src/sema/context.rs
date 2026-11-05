@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::RangeInclusive};
 
 use crate::{
     ast::{
-        self, UnspanIdent,
+        UnspanIdent,
         program::{ConstExpr, SubrangeBound},
     },
     sema::Expected,
@@ -13,8 +13,10 @@ use super::{
     AnalysisError, AnalysisResult,
     builtins::{BuiltinConst, BuiltinFunc, BuiltinProc, BuiltinType, BuiltinVar},
 };
-use ast::program as p;
-use ast::program::{OrdinalType as AOrdTy, Type as ATy, UnpackedStructuredType as AUnpackStructTy};
+use crate::ast::program::{
+    self as p, OrdinalType as AOrdTy, Type as ATy, UnpackedStructuredType as AUnpackStructTy,
+};
+
 use lasso::{Rodeo, Spur};
 
 pub struct TypingContext {
@@ -55,7 +57,7 @@ pub enum Constant {
     Bool(bool),
     Char(u8),
     Str(StringId),
-    Enum { r#enum: TypeId, member_idx: usize },
+    Enum { r#enum: TypeId, member_idx: i64 },
     // Constants should be fully resolved on insertion so we shouldn't need this anymore
     // Ident {
     //     is_pos: bool,
@@ -64,6 +66,7 @@ pub enum Constant {
     // },
 }
 
+// Intentionally not `PartialEq`, only `TypeId` should have equality.
 #[derive(Debug, Clone)]
 pub enum TypeKind {
     Enumerated {
@@ -139,9 +142,21 @@ impl Scope {
 pub struct DefId(usize);
 
 /* 'Subtype's of `DefId` */
+
+// These types exist as contracts that a definition is of a particular kind
+// Alongside lossy conversions back to `DefId` for convenience
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ProgramParamId(usize);
+
+impl From<ProgramParamId> for DefId {
+    fn from(value: ProgramParamId) -> Self {
+        DefId(value.0)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct FieldId(usize);
-
 impl From<FieldId> for DefId {
     fn from(value: FieldId) -> Self {
         DefId(value.0)
@@ -157,9 +172,49 @@ impl From<EnumMemberId> for DefId {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ConstDefId(usize);
+impl From<ConstDefId> for DefId {
+    fn from(value: ConstDefId) -> Self {
+        DefId(value.0)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct FuncId(usize);
+impl From<FuncId> for DefId {
+    fn from(value: FuncId) -> Self {
+        DefId(value.0)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct ProcId(usize);
+impl From<ProcId> for DefId {
+    fn from(value: ProcId) -> Self {
+        DefId(value.0)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct ParamId(usize);
 impl From<ParamId> for DefId {
     fn from(value: ParamId) -> Self {
+        DefId(value.0)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct WithRecordVarId(usize);
+impl From<WithRecordVarId> for DefId {
+    fn from(value: WithRecordVarId) -> Self {
+        DefId(value.0)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub struct WithFieldAliasId(usize);
+impl From<WithFieldAliasId> for DefId {
+    fn from(value: WithFieldAliasId) -> Self {
         DefId(value.0)
     }
 }
@@ -181,22 +236,47 @@ pub enum DefPoint {
     BuiltinProc(BuiltinProc),
     BuiltinFunc(BuiltinFunc),
     UserDef { name: UnspanIdent, kind: DefKind, span: Span },
+    WithRecordVar { r#type: TypeId, span: Span },
 }
 
 #[derive(Debug, Clone)]
 pub enum DefKind {
     ProgramParam,
-    Const { r#type: TypeId, value: Constant },
+    // TODO: Rename to `ConstDef` mayhaps?
+    Const {
+        r#type: TypeId,
+        value: Constant,
+    },
+    // TODO: Same for these two??
     Type(TypeId),
     Var(TypeId),
-    Field { record: TypeId, r#type: TypeId },
-    // ordinal would ideally be a u32/u64 but we want it to line up with the
+    Field {
+        record: TypeId,
+        r#type: TypeId,
+    },
+    WithFieldAlias {
+        record_var: WithRecordVarId,
+        field: FieldId,
+        r#type: TypeId,
+    },
+    // `ordinal` would ideally be a u32/u64 but we want it to line up with the
     // type of subrange bounds which are i64
-    EnumMember { r#type: TypeId, ordinal: i64 },
+    EnumMember {
+        r#type: TypeId,
+        ordinal: i64,
+    },
     Proc(ProcSig),
     Func(FuncSig),
-    Param(ParamKind),
-    ConformArrayBound(OrdinalTypeId), /* conformant array bound */
+    Param {
+        kind: ParamKind,
+        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_) | DefKind::Func(_), .. }`
+        routine: DefId,
+    },
+    ConformArrayBound {
+        r#type: OrdinalTypeId,
+        /// Guaranteed to be `DefPoint::UserDef { kind: DefKind::Proc(_) | DefKind::Func(_), .. }`
+        routine: DefId,
+    }, /* conformant array bound */
 }
 
 #[derive(Debug, Clone)]
@@ -502,7 +582,7 @@ impl TypingContext {
                                 }
                             }
                             Constant::Char(chr) => *chr as i64,
-                            Constant::Enum { r#enum, member_idx } => *member_idx as i64,
+                            Constant::Enum { r#enum, member_idx } => *member_idx,
                             // Assumption: Constant defs are resolved fully at definition time meaning there are no
                             // more references to other constant-identifiers left.
                             _ => {
@@ -678,13 +758,32 @@ impl TypingContext {
             ConstExpr::NumLitOrIdent { is_pos, lit } => {
                 let sign = if is_pos.unwrap_or(true) { 1i64 } else { -1 };
                 match lit {
-                    p::ConstExprNumLit::UIntLit(n) => {
-                        Ok((self.integer.into(), Constant::Int(sign * (*n as i64))))
+                    &p::ConstExprNumLit::UIntLit(n) => {
+                        Ok((self.integer.into(), Constant::Int(sign * (n as i64))))
                     }
-                    p::ConstExprNumLit::URealLit(n) => {
+                    &p::ConstExprNumLit::URealLit(n) => {
                         Ok((self.real, Constant::Real(sign as f64 * n)))
                     }
-                    p::ConstExprNumLit::Ident(name) => self.lookup_const(*name, constexpr.span),
+                    &p::ConstExprNumLit::Ident(name) => {
+                        let def = self.lookup(name, constexpr.span)?;
+                        match self.defs[def.0] {
+                            DefPoint::BuiltinConst(bc) => Ok(self.builtin_const(bc)),
+                            DefPoint::UserDef {
+                                kind: DefKind::Const { r#type, value }, ..
+                            } => Ok((r#type, value)),
+                            DefPoint::UserDef {
+                                kind: DefKind::EnumMember { r#type, ordinal },
+                                ..
+                            } => {
+                                Ok((r#type, Constant::Enum { r#enum: r#type, member_idx: ordinal }))
+                            }
+                            _ => Err(AnalysisError::MismatchDef {
+                                got: def,
+                                expected: "constant or enumeration member",
+                                origin: constexpr.span,
+                            }),
+                        }
+                    }
                 }
             }
             ConstExpr::StrLit(str) => {
@@ -695,19 +794,26 @@ impl TypingContext {
         }
     }
 
-    pub fn infer_string(&mut self, str: &str) -> TypeId {
+    pub fn infer_string(&mut self, s: &str) -> TypeId {
+        if s.len() == 1 {
+            self.char.into()
+        } else {
+            let subrange = self.make_subrange(self.integer, 1, s.len() as i64 - 1);
+            let ty =
+                TypeKind::Array { packed: true, indices: vec![subrange], elem: self.char.into() };
+            self.fresh(ty)
+        }
+    }
+
+    pub fn make_subrange(
+        &mut self,
+        host_type: OrdinalTypeId,
+        lower: i64,
+        upper: i64,
+    ) -> OrdinalTypeId {
         // TODO: Make `OrdinalTypeId` correct by construction with a `fresh_ordinal_ty` method or similar
         // which asserts that `kind` is actually ordinal with `unreachable!()`.
-        let subrange = OrdinalTypeId(
-            self.fresh(TypeKind::Subrange {
-                host_type: self.integer,
-                lower: 1,
-                upper: str.len() as i64 - 1,
-            })
-            .0,
-        );
-        let ty = TypeKind::Array { packed: true, indices: vec![subrange], elem: self.char.into() };
-        self.fresh(ty)
+        OrdinalTypeId(self.fresh(TypeKind::Subrange { host_type, lower, upper }).0)
     }
 
     pub fn fresh(&mut self, kind: TypeKind) -> TypeId {
@@ -749,7 +855,8 @@ impl TypingContext {
 
     // Feels icky discarding all this type info, but factors are to be treated as their (canonical|super)-type
     // TODO: Consider if it is possible to bubble up information like subrange intervals as far as possible,
-    // eliminating excess runtime checks
+    // eliminating excess runtime checks, but also maintaining standards compliance.
+    // Should be possible considering the standard does not specify at what point errors should occur.
     pub fn widen_type(&mut self, r#type: TypeId) -> TypeId {
         match *self.get_type(r#type) {
             TypeKind::Subrange { host_type, .. } => host_type.into(),
@@ -931,16 +1038,13 @@ impl TypingContext {
 
     /// # Panics
     ///
-    /// When passed a field, enum member, param, or conformant array bound it will panic as there are specialised
-    /// methods for those that return a specialisation of [`DefId`].
+    /// When passed a program parameter, constant, field, enum member, param, or conformant array bound it will panic as
+    /// there are specialised methods for those that return a specialisation of [`DefId`].
     pub fn create_def(&mut self, name: UnspanIdent, kind: DefKind, span: Span) -> DefId {
         match kind {
-            DefKind::ProgramParam
-            | DefKind::Const { .. }
-            | DefKind::Type(_)
-            | DefKind::Var(_)
-            | DefKind::Proc(_)
-            | DefKind::Func(_) => DefId(self.create(name, kind, span)),
+            DefKind::Type(_) | DefKind::Var(_) | DefKind::Proc(_) | DefKind::Func(_) => {
+                DefId(self.create(name, kind, span))
+            }
             _ => unreachable!(),
         }
     }
@@ -957,6 +1061,29 @@ impl TypingContext {
         Ok(def)
     }
 
+    // I really wish this didn't have to exist
+    pub fn update_def(&mut self, def: DefId, f: impl FnOnce(&mut DefPoint)) {
+        f(&mut self.defs[def.0])
+    }
+
+    pub fn insert_program_param(
+        &mut self,
+        name: UnspanIdent,
+        span: Span,
+    ) -> AnalysisResult<ProgramParamId> {
+        self.insert(name, DefKind::ProgramParam, span).map(ProgramParamId)
+    }
+
+    pub fn insert_const_def(
+        &mut self,
+        name: UnspanIdent,
+        span: Span,
+        value: Constant,
+        r#type: TypeId,
+    ) -> AnalysisResult<ConstDefId> {
+        self.insert(name, DefKind::Const { r#type, value }, span).map(ConstDefId)
+    }
+
     fn create_field(
         &mut self,
         name: UnspanIdent,
@@ -966,6 +1093,29 @@ impl TypingContext {
     ) -> FieldId {
         let id = self.create(name, DefKind::Field { record, r#type }, span);
         FieldId(id)
+    }
+
+    // Not fallible due to with-blocks having their own scope, no possibility of duplication.
+    pub fn create_with_record_var(&mut self, r#type: TypeId, span: Span) -> WithRecordVarId {
+        self.defs.push(DefPoint::WithRecordVar { r#type, span });
+        WithRecordVarId(self.defs.len() - 1)
+    }
+
+    // Not fallible because it is only done
+    pub fn insert_with_field_alias(
+        &mut self,
+        record_var: WithRecordVarId,
+        field: FieldId,
+        span: Span,
+    ) -> AnalysisResult<WithFieldAliasId> {
+        // There may be a better way to do this
+        let &DefPoint::UserDef { name, kind: DefKind::Field { r#type, .. }, .. } =
+            self.get_def(field.into())
+        else {
+            unreachable!()
+        };
+        self.insert(name, DefKind::WithFieldAlias { record_var, field, r#type }, span)
+            .map(WithFieldAliasId)
     }
 
     fn insert_enum_member(
@@ -978,32 +1128,25 @@ impl TypingContext {
         self.insert(name, DefKind::EnumMember { r#type, ordinal }, span).map(EnumMemberId)
     }
 
-    pub fn create_param(&mut self, name: UnspanIdent, span: Span, kind: ParamKind) -> ParamId {
-        let id = self.create(name, DefKind::Param(kind), span);
+    pub fn create_param(
+        &mut self,
+        name: UnspanIdent,
+        span: Span,
+        kind: ParamKind,
+        routine: DefId,
+    ) -> ParamId {
+        let id = self.create(name, DefKind::Param { kind, routine }, span);
         ParamId(id)
     }
-
-    // pub fn get_param(&self, param: ParamId) -> Spanned<(UnspanIdent, &ParamKind)> {
-    //     match &self.defs[param.0] {
-    //         DefPoint::UserDef {
-    //             name,
-    //             kind: DefKind::Param(kind),
-    //             span,
-    //         } => Spanned {
-    //             span: *span,
-    //             node: (*name, kind),
-    //         },
-    //         _ => unreachable!(),
-    //     }
-    // }
 
     pub fn create_conform_array_bound(
         &mut self,
         name: UnspanIdent,
         span: Span,
         r#type: OrdinalTypeId,
+        routine: DefId,
     ) -> ConformArrayBoundId {
-        let id = self.create(name, DefKind::ConformArrayBound(r#type), span);
+        let id = self.create(name, DefKind::ConformArrayBound { r#type, routine }, span);
         ConformArrayBoundId(id)
     }
 
@@ -1014,7 +1157,8 @@ impl TypingContext {
         Ok(id)
     }
 
-    /// Checks whether a defining-point of the same name already exists in that scope.
+    /// Checks whether a defining-point of the same name already exists in the current scope
+    /// (enclosing scopes are fine).
     fn check_dup(&self, name: UnspanIdent, span: Span) -> AnalysisResult<()> {
         // Per 6.2.2.75, two defining-points in the same region/scope may not have the same name
         if let Some(&def) = self.curr_scope().idents.get(&name) {
@@ -1029,8 +1173,17 @@ impl TypingContext {
         self.defs.len() - 1
     }
 
-    pub fn insert_label(&mut self, label: Spanned<u16>) {
-        self.curr_scope_mut().labels.insert(label.node, label.span);
+    pub fn insert_label(&mut self, label: Spanned<u16>) -> AnalysisResult<()> {
+        if let Some(&existing) = self.curr_scope().labels.get(&label.node) {
+            Err(AnalysisError::DuplicateLabel {
+                label: label.node,
+                existing,
+                duplicate: label.span,
+            })
+        } else {
+            self.curr_scope_mut().labels.insert(label.node, label.span);
+            Ok(())
+        }
     }
 
     pub fn lookup(&self, name: UnspanIdent, at: Span) -> AnalysisResult<DefId> {
@@ -1060,7 +1213,9 @@ impl TypingContext {
             DefPoint::UserDef { kind: DefKind::Const { r#type, value }, .. } => {
                 Ok((*r#type, *value))
             }
-            _ => Err(AnalysisError::MismatchDef { got: def_id, expected: "type", origin: span }),
+            _ => {
+                Err(AnalysisError::MismatchDef { got: def_id, expected: "constant", origin: span })
+            }
         })
     }
 
@@ -1105,6 +1260,90 @@ impl TypingContext {
             DefPoint::UserDef { name, kind: DefKind::Type(ty), span } if *ty == r#type => true,
             _ => false,
         })
+    }
+
+    /* This entire design feels icky (duplicate checks everywhere), but in the optimiser we trust */
+
+    #[inline]
+    pub fn as_func(&self, def: DefId) -> FuncId {
+        if let DefPoint::UserDef { kind: DefKind::Func(_), .. } = self.defs[def.0] {
+            FuncId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_proc(&self, def: DefId) -> ProcId {
+        if let DefPoint::UserDef { kind: DefKind::Proc(_), .. } = self.defs[def.0] {
+            ProcId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_field(&self, def: DefId) -> FieldId {
+        if let DefPoint::UserDef { kind: DefKind::Field { .. }, .. } = self.defs[def.0] {
+            FieldId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_with_record_var(&self, def: DefId) -> WithRecordVarId {
+        if let DefPoint::WithRecordVar { .. } = self.defs[def.0] {
+            WithRecordVarId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_with_field_alias(&self, def: DefId) -> WithFieldAliasId {
+        if let DefPoint::UserDef { kind: DefKind::WithFieldAlias { .. }, .. } = self.defs[def.0] {
+            WithFieldAliasId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_enum_member(&self, def: DefId) -> EnumMemberId {
+        if let DefPoint::UserDef { kind: DefKind::EnumMember { .. }, .. } = self.defs[def.0] {
+            EnumMemberId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_const_def(&self, def: DefId) -> ConstDefId {
+        if let DefPoint::UserDef { kind: DefKind::Const { .. }, .. } = self.defs[def.0] {
+            ConstDefId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_param(&self, def: DefId) -> ParamId {
+        if let DefPoint::UserDef { kind: DefKind::Param { .. }, .. } = self.defs[def.0] {
+            ParamId(def.0)
+        } else {
+            unreachable!()
+        }
+    }
+
+    #[inline]
+    pub fn as_conform_array_bound(&self, def: DefId) -> ConformArrayBoundId {
+        if let DefPoint::UserDef { kind: DefKind::ConformArrayBound { .. }, .. } = self.defs[def.0]
+        {
+            ConformArrayBoundId(def.0)
+        } else {
+            unreachable!()
+        }
     }
 
     /* Just too tempting to inline all of these 😭 */
@@ -1157,7 +1396,7 @@ impl TypingContext {
     }
 
     #[inline]
-    fn get_or_intern_string(&mut self, s: &str) -> StringId {
+    pub fn get_or_intern_string(&mut self, s: impl AsRef<str>) -> StringId {
         StringId(self.strings.get_or_intern(s))
     }
 

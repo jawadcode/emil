@@ -68,6 +68,11 @@ pub enum AnalysisError {
         existing: DefId,
         duplicate: Span,
     },
+    DuplicateLabel {
+        label: u16,
+        existing: Span,
+        duplicate: Span,
+    },
     MissingField {
         record: TypeId,
         name: UnspanIdent,
@@ -102,6 +107,9 @@ pub enum AnalysisError {
         at: Span,
         /// Guaranteed to be `TypeKind::Set { .. }`
         set_type: TypeId,
+    },
+    ExpectedVar {
+        span: Span,
     },
 }
 
@@ -220,7 +228,7 @@ impl Analyser {
                         Label::new((file_path, duplicate.to_range()))
                             .with_message("Duplicate here"),
                     );
-                if let DefPoint::UserDef { kind, span, .. } = self.context.get_def(existing) {
+                if let DefPoint::UserDef { span, .. } = self.context.get_def(existing) {
                     report.with_label(
                         Label::new((file_path, span.to_range()))
                             .with_message("Previous declaration here"),
@@ -228,6 +236,18 @@ impl Analyser {
                 } else {
                     report
                 }
+            }
+            AnalysisError::DuplicateLabel { label, existing, duplicate } => {
+                Report::build(ReportKind::Error, (file_path, duplicate.to_range()))
+                    .with_message(format!("Duplicate label declaration: '{label}'"))
+                    .with_label(
+                        Label::new((file_path, duplicate.to_range()))
+                            .with_message("Duplicate here"),
+                    )
+                    .with_label(
+                        Label::new((file_path, existing.to_range()))
+                            .with_message("Previous declaration here"),
+                    )
             }
             AnalysisError::MissingField { record, name, at } => {
                 let Some(&DefPoint::UserDef {
@@ -325,12 +345,17 @@ impl Analyser {
                             .with_message(format!("{member_type} cannot be member of {set_type}")),
                     )
             }
+            AnalysisError::ExpectedVar { span } => {
+                Report::build(ReportKind::Error, (file_path, span.to_range()))
+                    .with_message("Expected variable-access")
+                    .with_label(
+                        Label::new((file_path, span.to_range()))
+                            .with_message("Expected variable-access here"),
+                    )
+            }
         }
         .with_config(
-            Config::new()
-                // .with_compact(true)
-                .with_index_type(IndexType::Byte)
-                .with_label_attach(LabelAttach::Start),
+            Config::new().with_index_type(IndexType::Byte).with_label_attach(LabelAttach::Start),
         )
         .finish()
         .eprint((file_path, Source::from(file_content)))
@@ -338,12 +363,12 @@ impl Analyser {
     }
 
     fn get_param(&self, param: ParamId) -> (&str, String, Range<usize>) {
-        let DefPoint::UserDef { name, kind: DefKind::Param(param), span } =
+        let DefPoint::UserDef { name, kind: DefKind::Param { kind, .. }, span } =
             self.context.get_def(param.into())
         else {
             unreachable!()
         };
-        let param_info = match param {
+        let param_info = match kind {
             ParamKind::Value(r#type) => {
                 format!("value-parameter of type {}", self.param_type_to_string(r#type))
             }
@@ -398,9 +423,11 @@ impl Analyser {
                 DefKind::EnumMember { .. } => "enumerated type member",
                 DefKind::Proc(_) => "procedure",
                 DefKind::Func(_) => "function",
-                DefKind::Param(_) => "parameter",
-                DefKind::ConformArrayBound(_) => "conformant array parameter bound",
+                DefKind::Param { .. } => "parameter",
+                DefKind::ConformArrayBound { .. } => "conformant array parameter bound",
+                DefKind::WithFieldAlias { .. } => "with-block field alias",
             },
+            DefPoint::WithRecordVar { .. } => "with-block record variable",
         }
     }
 
@@ -573,7 +600,7 @@ impl Analyser {
                         unreachable!()
                     };
                     let DefPoint::UserDef { name, kind: DefKind::EnumMember { .. }, .. } =
-                        self.context.get_def(members[*member_idx].into())
+                        self.context.get_def(members[*member_idx as usize].into())
                     else {
                         unreachable!()
                     };

@@ -1,3 +1,4 @@
+///! Let me cook
 use lasso::Rodeo;
 use strum::{EnumIter, IntoStaticStr};
 

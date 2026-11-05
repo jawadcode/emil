@@ -7,6 +7,7 @@ mod ast;
 mod lexer;
 mod parser;
 mod sema;
+mod tast;
 mod utils;
 
 fn main() {
@@ -28,9 +29,12 @@ fn main() {
             let mut analyser = Analyser::new(parser.yeehaw());
             let result = analyser.check_program(&program.node);
             println!();
-            if let Err(err) = result {
-                analyser.print_error(err, &source_path, &source_content);
-                process::exit(1)
+            match result {
+                Ok(program) => println!("{:?}", program),
+                Err(err) => {
+                    analyser.print_error(err, &source_path, &source_content);
+                    process::exit(1)
+                }
             }
         }
         Err(err) => {
