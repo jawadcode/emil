@@ -313,11 +313,11 @@ pub struct ProcSig {
     pub has_body: bool,
 }
 
-impl ProcSig {
-    pub fn params_iter(&self) -> ParamIter<'_> {
-        ParamIter { params: &self.params, section_cursor: 0, param_cursor: 0 }
-    }
-}
+// impl ProcSig {
+//     pub fn params_iter(&self) -> ParamIter<'_> {
+//         ParamIter { params: &self.params, section_cursor: 0, param_cursor: 0 }
+//     }
+// }
 
 #[derive(Debug, Clone)]
 pub struct FuncSig {
@@ -372,21 +372,6 @@ impl Iterator for ParamIter<'_> {
             None
         }
     }
-}
-
-// Little sanity check never hurts :P
-#[test]
-fn param_iter_test() {
-    let sig = ProcSig {
-        params: vec![
-            ParamSection::One(ParamId(0)),
-            ParamSection::Many(vec![ParamId(1), ParamId(2), ParamId(3)]),
-            ParamSection::One(ParamId(4)),
-        ],
-        has_body: false,
-    };
-    let expected = [ParamId(0), ParamId(1), ParamId(2), ParamId(3), ParamId(4)];
-    assert_eq!(sig.params_iter().collect::<Vec<_>>(), expected);
 }
 
 #[derive(Debug, Clone)]
