@@ -3,7 +3,10 @@ use std::{env, fs, process};
 use parser::{ParserState, program::program};
 use sema::Analyser;
 
+use crate::backend::compile_llvm;
+
 mod ast;
+mod backend;
 mod lexer;
 mod parser;
 mod sema;
@@ -30,7 +33,10 @@ fn main() {
             let result = analyser.check_program(&program.node);
             println!("\nElaborating...");
             match result {
-                Ok(program) => println!("Typed AST:\n{:?}", program),
+                Ok(program) => {
+                    println!("Typed AST:\n{:?}", program);
+                    compile_llvm(&program);
+                }
                 Err(err) => {
                     analyser.print_error(err, &source_path, &source_content);
                     process::exit(1)

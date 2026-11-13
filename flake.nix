@@ -27,7 +27,8 @@
           src = craneLib.cleanCargoSource ./.;
           strictDeps = true;
           nativeBuildInputs = [ ];
-          buildInputs = [ ];
+          buildInputs = with pkgs; [ llvmPackages_23.llvm libxml2 libffi ];
+          LLVM_SYS_231_PREFIX = "${pkgs.llvmPackages_23.llvm.dev}";
         };
 
         emil-crate = craneLib.buildPackage (commonArgs // {
@@ -57,9 +58,22 @@
                     '
                   '';
                 })
+                llvmPackages_23.llvm
+                libxml2
+                libffi
               ];
+              LLVM_SYS_231_PREFIX = "${pkgs.llvmPackages_23.llvm.dev}";
             };
-            emilDevShell = craneLib.devShell devShellOpts;
+
+            emilDevShell =
+              (if pkgs.stdenv.targetPlatform.isDarwin
+              then craneLib.devShell
+              else
+                craneLib.devShell.override {
+                  mkShell = pkgs.mkShell.override {
+                    stdenv = pkgs.stdenvAdapters.useWildLinker pkgs.stdenv;
+                  };
+                }) devShellOpts;
           in
           {
             emil = emilDevShell;

@@ -42,7 +42,7 @@ pub struct VarDecl {
     pub r#type: TypeId,
 }
 
-/* Since this is a fairly unambitious  */
+/* Since this is a fairly unambitious lowering, we're not going to filter out forward decls  */
 
 #[derive(Debug, Clone)]
 pub enum RoutineDecl {
