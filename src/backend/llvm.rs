@@ -3,8 +3,12 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::Module,
-    targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple},
+    targets::{
+        CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine, TargetTriple,
+    },
 };
+
+use crate::{tast::program::Program, utils::Spanned};
 
 pub struct LLVMContext<'ctx> {
     pub context: &'ctx Context,
@@ -50,5 +54,27 @@ impl<'ctx> LLVMContext<'ctx> {
             .unwrap();
 
         Self { context, builder, module, machine }
+    }
+
+    pub fn dump_module(&self) {
+        println!("\nLLVM IR:\n{}", self.module.print_to_string().to_string());
+    }
+
+    pub fn dump_assembly(&self) {
+        let buf = self
+            .machine
+            .write_to_memory_buffer(&self.module, FileType::Assembly)
+            .expect("Failed to write asm");
+
+        println!("\nAsm Repr:\n{}", str::from_utf8(buf.as_slice()).unwrap());
+    }
+
+    pub fn compile_program(&self, program: &Program) {
+        let param_types = &[];
+        let program_type = self.context.void_type().fn_type(param_types, false);
+        let program = self.module.add_function("__program", program_type, None);
+        let basic_block = self.context.append_basic_block(program, "entry");
+        self.builder.position_at_end(basic_block);
+        self.builder.build_return(None).unwrap();
     }
 }
